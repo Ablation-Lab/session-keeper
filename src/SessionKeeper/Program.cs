@@ -31,7 +31,8 @@ public static class Program
             {
                 using (show)
                 {
-                    AllowSetForegroundWindow(-1); // ASFW_ANY
+                    // Let only the running SessionKeeper take the foreground (not ASFW_ANY, which would let any process).
+                    if (FindRunningInstance() is int firstPid) AllowSetForegroundWindow(firstPid);
                     show.Set();
                 }
             }
@@ -41,5 +42,21 @@ public static class Program
         var app = new App { StartInTray = startInTray };
         app.InitializeComponent();
         return app.Run();
+    }
+
+    /// <summary>PID of the other SessionKeeper process running from the same executable, if any.</summary>
+    private static int? FindRunningInstance()
+    {
+        var me = Environment.ProcessId;
+        var exe = Environment.ProcessPath;
+        foreach (var p in System.Diagnostics.Process.GetProcessesByName("SessionKeeper"))
+        {
+            using (p)
+            {
+                if (p.Id == me) continue;
+                if (string.Equals(Native.QueryProcess(p.Id).ImagePath, exe, StringComparison.OrdinalIgnoreCase)) return p.Id;
+            }
+        }
+        return null;
     }
 }

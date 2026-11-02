@@ -123,6 +123,7 @@ public sealed class LauncherTests
         var psi = new ProcessStartInfo(Launcher.PowerShellPath, "-NoProfile -NonInteractive -EncodedCommand " + Launcher.Encode(script))
         {
             UseShellExecute = false,
+            CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
@@ -186,6 +187,7 @@ public sealed class LauncherTests
                 "-NoProfile -NonInteractive -EncodedCommand " + Launcher.Encode(script))
             {
                 UseShellExecute = false,
+            CreateNoWindow = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 StandardOutputEncoding = Encoding.UTF8,

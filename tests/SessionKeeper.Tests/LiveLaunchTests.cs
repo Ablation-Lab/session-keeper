@@ -22,7 +22,9 @@ public sealed class LiveLaunchTests(ITestOutputHelper output)
         Directory.CreateDirectory(a);
         Directory.CreateDirectory(b);
 
-        var result = Launcher.Launch(new[] { new LaunchItem(a, null, "plain folder"), new LaunchItem(b, null, "semi;colon it's") });
+        LaunchResult result;
+        using (LaunchGuard.UserAction(LaunchGuard.Reopen))
+            result = Launcher.Launch(new[] { new LaunchItem(a, null, "plain folder"), new LaunchItem(b, null, "semi;colon it's") });
         output.WriteLine($"opened={result.OpenedItems.Count} skipped={result.Skipped.Count} error={result.Error} psFallback={result.UsedPowerShellWindows}");
         Assert.Null(result.Error);
         Assert.Equal(2, result.OpenedItems.Count);

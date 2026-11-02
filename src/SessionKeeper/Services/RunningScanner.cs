@@ -26,6 +26,9 @@ public sealed class RunningScanner
     /// <summary>Last successfully parsed registry entry per PID, used when a read catches a file mid-write.</summary>
     private Dictionary<int, RegistryEntry> _lastGood = new();
 
+    /// <summary>Working directory of unmatched processes, read once per process (keyed by PID + start time).</summary>
+    private Dictionary<(int, long?), string?> _cwdCache = new();
+
     public RunningScanner(string? registryDir = null)
     {
         _registryDir = registryDir ?? Path.Combine(ClaudePaths.ClaudeDir, "sessions");
@@ -92,6 +95,7 @@ public sealed class RunningScanner
         _lastGood = lastGood;
 
         // claude.exe processes that the registry doesn't know about.
+        var cwdCache = new Dictionary<(int, long?), string?>();
         foreach (var (pid, name) in hosts)
         {
             if (name != "claude" || claimed.Contains(pid)) continue;
@@ -103,7 +107,9 @@ public sealed class RunningScanner
                 Facts(parentPid) is { } parent && parent.Created is long pc && p.Created is long cc && pc <= cc)
                 continue;
 
-            var cwd = Native.TryGetCurrentDirectory(pid);
+            var key = (pid, p.Created);
+            if (!_cwdCache.TryGetValue(key, out var cwd)) cwd = Native.TryGetCurrentDirectory(pid);
+            cwdCache[key] = cwd;
             var started = FromFileTime(p.Created);
             // A new claude takes a few seconds to write its registry entry; don't flash "unmatched".
             bool young = started is { } s && DateTimeOffset.UtcNow - s < TimeSpan.FromSeconds(20);
@@ -118,6 +124,7 @@ public sealed class RunningScanner
                     : "Not in Claude Code's session registry (e.g. waiting at the folder-trust prompt, or launched from inside another session).",
             });
         }
+        _cwdCache = cwdCache; // drop entries for processes that have gone
 
         return results;
     }

@@ -22,6 +22,7 @@ public partial class App : Application
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException += (_, args) => { Log(args.Exception); args.SetObserved(); };
         base.OnStartup(e);
+        Services.LaunchGuard.LogEvent("APP", $"started mode={(StartInTray ? "tray (--startup)" : "window")} exe={Environment.ProcessPath}");
 
         var window = new MainWindow();
         MainWindow = window;
@@ -35,6 +36,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _exiting = true;
+        Services.LaunchGuard.LogEvent("APP", "exited");
         _showEvent?.Set(); // release the listener thread
         RemoveTrayIcon();
         base.OnExit(e);

@@ -271,7 +271,8 @@ public static class Launcher
         {
             var psi = new ProcessStartInfo(wt, lines[i].CommandLine) { UseShellExecute = false };
             CleanEnvironment(psi);
-            using (Process.Start(psi)) { }
+            var labels = string.Join(", ", lines[i].Items.Select(x => x.Label));
+            using (LaunchGuard.Start(psi, $"Windows Terminal: {lines[i].Items.Count} tab(s): {labels}")) { }
             result.OpenedItems.AddRange(lines[i].Items); // record each chunk as it succeeds
             if (i < lines.Count - 1) Thread.Sleep(1500); // let the named window exist before adding more tabs
         }
@@ -286,7 +287,7 @@ public static class Launcher
             WorkingDirectory = it.ProjectDir,
         };
         CleanEnvironment(psi);
-        using (Process.Start(psi)) { }
+        using (LaunchGuard.Start(psi, $"PowerShell window: {it.Label}")) { }
     }
 
     /// <summary>

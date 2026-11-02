@@ -119,6 +119,7 @@ public partial class MainWindow : Window
 
     private async Task RefreshCurrentCoreAsync()
     {
+        using var noLaunches = LaunchGuard.Background(); // detection is read-only: it can never launch
         try
         {
             var rows = await Task.Run(() => SessionQueries.GetRunning(_scanner, _store)
@@ -196,6 +197,7 @@ public partial class MainWindow : Window
 
     private async Task LoadRecentAsync()
     {
+        using var noLaunches = LaunchGuard.Background();
         _recentCts?.Cancel();
         var cts = new CancellationTokenSource();
         _recentCts = cts;
@@ -288,7 +290,7 @@ public partial class MainWindow : Window
         var items = _recentRows.Where(r => r.IsChecked)
             .Select(r => new LaunchItem(r.Info.ProjectDir ?? "", r.Info.SessionId, r.FolderName))
             .ToList();
-        await ReopenAsync(items);
+        await ReopenAsync(items, LaunchGuard.Reopen);
     }
 
     private void SaveRecent_Click(object sender, RoutedEventArgs e)
@@ -342,6 +344,7 @@ public partial class MainWindow : Window
 
     private async Task ShowSnapshotDetailsAsync()
     {
+        using var noLaunches = LaunchGuard.Background();
         int version = ++_snapshotDetailsVersion;
         var item = SnapshotList.SelectedItem as SnapshotListItem;
         var snap = item?.File.Snapshot;
@@ -392,7 +395,7 @@ public partial class MainWindow : Window
             .Select(s => new LaunchItem(s.ProjectDir ?? "", SessionStore.IsValidSessionId(s.SessionId) ? s.SessionId : null,
                                         Fmt.FolderName(s.ProjectDir)))
             .ToList();
-        await ReopenAsync(items);
+        await ReopenAsync(items, LaunchGuard.Restore);
     }
 
     private async void RenameSnapshot_Click(object sender, RoutedEventArgs e)
@@ -435,10 +438,12 @@ public partial class MainWindow : Window
     {
         try
         {
+            using var action = LaunchGuard.UserAction(LaunchGuard.OpenSnapshotsFolder);
             Directory.CreateDirectory(_snapshots.Dir);
             // Full path: a bare "explorer.exe" is searched for in the app and current folders first.
             var explorer = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
-            using var _ = Process.Start(new ProcessStartInfo(explorer, Launcher.WinQuote(_snapshots.Dir)) { UseShellExecute = false });
+            using var _ = LaunchGuard.Start(new ProcessStartInfo(explorer, Launcher.WinQuote(_snapshots.Dir)) { UseShellExecute = false },
+                "Explorer: snapshots folder");
         }
         catch (Exception ex)
         {
@@ -522,7 +527,11 @@ public partial class MainWindow : Window
 
     // ============================================================ reopen
 
-    private async Task ReopenAsync(List<LaunchItem> items)
+    /// <summary>
+    /// The only path that opens sessions. <paramref name="userAction"/> names the button that triggered it;
+    /// it opens the launch scope that <see cref="LaunchGuard"/> requires, so nothing else can launch.
+    /// </summary>
+    private async Task ReopenAsync(List<LaunchItem> items, string userAction)
     {
         if (items.Count == 0 || _launching) return;
         _launching = true;
@@ -572,7 +581,15 @@ public partial class MainWindow : Window
                     MessageBoxImage.Question) != MessageBoxResult.OK)
                 return;
 
-            var result = ready.Count > 0 ? await Task.Run(() => Launcher.Launch(ready)) : new LaunchResult();
+            // The launch scope covers only the launch itself: no dialogs (and so no nested message loop that
+            // could run a timer tick inside the scope) happen while it is open.
+            LaunchResult result;
+            if (ready.Count > 0)
+            {
+                using (LaunchGuard.UserAction(userAction))
+                    result = await Task.Run(() => Launcher.Launch(ready));
+            }
+            else result = new LaunchResult();
             foreach (var it in result.OpenedItems.Where(r => r.SessionId != null))
                 _recentlyLaunched[it.SessionId!] = DateTime.UtcNow;
             result.Skipped.InsertRange(0, preSkipped);

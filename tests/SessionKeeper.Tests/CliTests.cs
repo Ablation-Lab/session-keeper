@@ -95,6 +95,7 @@ public sealed class CliTests
         var psi = new ProcessStartInfo(ExePath())
         {
             UseShellExecute = false,
+            CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
