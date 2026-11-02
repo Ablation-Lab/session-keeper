@@ -40,6 +40,8 @@ public sealed class Snapshot
     public int Version { get; set; } = 1;
     public string Name { get; set; } = "";
     public DateTimeOffset CreatedAt { get; set; }
+    /// <summary>Optional note for the whole snapshot (e.g. "end of Monday, waiting on council results").</summary>
+    public string? Note { get; set; }
     public List<SnapshotSession> Sessions { get; set; } = new();
     /// <summary>Unknown fields from a hand-edited file, preserved on rename.</summary>
     [JsonExtensionData] public Dictionary<string, System.Text.Json.JsonElement>? Extra { get; set; }

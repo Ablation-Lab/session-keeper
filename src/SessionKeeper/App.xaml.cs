@@ -9,11 +9,116 @@ public partial class App : Application
     public static string DataDir { get; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SessionKeeper");
 
+    /// <summary>Started by Windows at sign-in (--startup): stay in the tray until opened.</summary>
+    public bool StartInTray { get; init; }
+
+    private System.Windows.Forms.NotifyIcon? _tray;
+    private EventWaitHandle? _showEvent;
+    private Thread? _showListener;
+    private volatile bool _exiting;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException += (_, args) => { Log(args.Exception); args.SetObserved(); };
         base.OnStartup(e);
+
+        var window = new MainWindow();
+        MainWindow = window;
+        StartShowListener();
+
+        if (StartInTray && TryCreateTrayIcon()) return; // window stays hidden: no scanning until opened
+        if (StartInTray) window.WindowState = WindowState.Minimized; // tray unavailable: start minimised
+        window.Show();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        _exiting = true;
+        _showEvent?.Set(); // release the listener thread
+        RemoveTrayIcon();
+        base.OnExit(e);
+    }
+
+    /// <summary>Brings the main window up, from the tray, minimised or behind other windows.</summary>
+    public void ShowMainWindow()
+    {
+        if (MainWindow is not { } w) return;
+        RemoveTrayIcon();
+        if (!w.IsVisible) w.Show();
+        if (w.WindowState == WindowState.Minimized) w.WindowState = WindowState.Normal;
+        w.Activate();
+        // Nudge to the front even if Windows' focus rules held activation back.
+        w.Topmost = true;
+        w.Topmost = false;
+        w.Focus();
+    }
+
+    /// <summary>Listens for a second launch asking this instance to show itself.</summary>
+    private void StartShowListener()
+    {
+        try
+        {
+            _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, Program.ShowEventName);
+        }
+        catch (Exception ex)
+        {
+            Log(ex);
+            return;
+        }
+        _showListener = new Thread(() =>
+        {
+            while (_showEvent.WaitOne() && !_exiting)
+                Dispatcher.BeginInvoke(ShowMainWindow);
+        })
+        { IsBackground = true, Name = "SessionKeeper show listener" };
+        _showListener.Start();
+    }
+
+    private bool TryCreateTrayIcon()
+    {
+        try
+        {
+            var menu = new System.Windows.Forms.ContextMenuStrip();
+            menu.Items.Add("Open SessionKeeper", null, (_, _) => ShowMainWindow());
+            menu.Items.Add("Exit", null, (_, _) => Shutdown());
+            _tray = new System.Windows.Forms.NotifyIcon
+            {
+                Icon = LoadTrayIcon(),
+                Text = "SessionKeeper",
+                ContextMenuStrip = menu,
+                Visible = true,
+            };
+            _tray.MouseClick += (_, args) =>
+            {
+                if (args.Button == System.Windows.Forms.MouseButtons.Left) ShowMainWindow();
+            };
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log(ex);
+            RemoveTrayIcon();
+            return false;
+        }
+    }
+
+    private static System.Drawing.Icon LoadTrayIcon()
+    {
+        var info = GetResourceStream(new Uri("pack://application:,,,/app.ico"));
+        if (info?.Stream is { } s)
+            using (s)
+                return new System.Drawing.Icon(s, System.Windows.Forms.SystemInformation.SmallIconSize);
+        return System.Drawing.SystemIcons.Application;
+    }
+
+    private void RemoveTrayIcon()
+    {
+        if (_tray == null) return;
+        _tray.Visible = false;
+        _tray.ContextMenuStrip?.Dispose();
+        _tray.Dispose();
+        _tray = null;
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

@@ -21,8 +21,12 @@ public sealed class SnapshotStore
 
     public SnapshotStore(string? dir = null)
     {
-        Dir = dir ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SessionKeeper", "snapshots");
+        Dir = dir
+              ?? NonEmpty(Environment.GetEnvironmentVariable("SESSIONKEEPER_SNAPSHOTS"))
+              ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SessionKeeper", "snapshots");
     }
+
+    private static string? NonEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
 
     public List<SnapshotFile> List()
     {

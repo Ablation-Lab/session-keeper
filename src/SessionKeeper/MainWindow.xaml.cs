@@ -73,6 +73,8 @@ public partial class MainWindow : Window
         UpdateStatus();
     }
 
+    private void Settings_Click(object sender, RoutedEventArgs e) => new SettingsWindow { Owner = this }.ShowDialog();
+
     private void UpdateStatus()
     {
         StatusText.Text = TabCurrent.IsChecked == true ? _currentStatus
@@ -119,21 +121,9 @@ public partial class MainWindow : Window
     {
         try
         {
-            var rows = await Task.Run(() =>
-            {
-                var running = _scanner.Scan();
-                return running.Select(r =>
-                {
-                    var info = r.SessionId != null ? _store.GetSession(r.SessionId, r.Cwd) : null;
-                    var dir = info?.ProjectDir ?? r.Cwd;
-                    return new CurrentRow(r, info, dir != null && !FolderProbe.Exists(dir));
-                }).ToList();
-            });
-
-            rows = rows
-                .OrderBy(r => r.Running.State is RunState.Unmatched or RunState.Starting ? 1 : 0)
-                .ThenByDescending(r => r.LastActive ?? DateTimeOffset.MinValue)
-                .ToList();
+            var rows = await Task.Run(() => SessionQueries.GetRunning(_scanner, _store)
+                .Select(e => new CurrentRow(e.Running, e.Info, e.FolderMissing))
+                .ToList());
 
             SyncCurrentRows(rows);
             _runningIds = WithRecentlyLaunched(rows.Where(r => r.SessionId != null).Select(r => r.SessionId!));
@@ -358,6 +348,9 @@ public partial class MainWindow : Window
         RenameButton.IsEnabled = snap != null;
         DeleteButton.IsEnabled = item != null;
         RestoreButton.IsEnabled = snap is { Sessions.Count: > 0 };
+
+        SnapshotNote.Text = snap?.Note ?? "";
+        SnapshotNote.Visibility = string.IsNullOrWhiteSpace(snap?.Note) ? Visibility.Collapsed : Visibility.Visible;
 
         if (item == null || snap == null)
         {

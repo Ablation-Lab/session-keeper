@@ -2,14 +2,86 @@
 
 A small Windows app (C# / .NET 8 WPF) that shows which Claude Code sessions are running, saves them as named snapshots, and reopens them later in Windows Terminal tabs, each resuming the same conversation.
 
-## Build and run
+## Install
+
+You need Windows 10 or 11 and the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). No admin rights are needed. From a clone of this repository:
 
 ```powershell
-dotnet build -c Release
-.\src\SessionKeeper\bin\Release\net8.0-windows\win-x64\SessionKeeper.exe
+powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-Needs the .NET 8 Desktop Runtime. Tests: `dotnet test`.
+This does three things:
+1. Builds the app into `%LOCALAPPDATA%\Programs\SessionKeeper`.
+2. Adds a Start menu shortcut.
+3. Installs the Claude Code skill (see below).
+
+Options:
+- `-Destination <folder>` installs somewhere else.
+- `-NoStartMenu` skips the shortcut.
+- `-NoSkill` skips the skill.
+
+To update, pull and run it again, after closing the app and its tray icon.
+
+**Uninstall:**
+1. In the app's Settings, untick both options.
+2. Close the app.
+3. Delete `%LOCALAPPDATA%\Programs\SessionKeeper` and `%USERPROFILE%\.claude\skills\session-keeper`.
+
+Snapshots stay in `%APPDATA%\SessionKeeper` until you delete them.
+
+**Developing:** run `dotnet build`, then `dotnet test`. The app is at `src\SessionKeeper\bin\Debug\net8.0-windows\win-x64\SessionKeeper.exe`.
+
+## Settings
+
+Open Settings with the gear button at the top right.
+
+- **Start with Windows** (off by default) adds a per-user entry under `HKCU\…\CurrentVersion\Run`. At sign-in the app starts in the system tray, and it doesn't scan anything until you open it. Click the tray icon to open it; right-click for Exit.
+- **Start menu shortcut** adds or removes `SessionKeeper.lnk` in your own Start menu folder.
+
+Both settings point at the copy of the app you set them from. If you move it, untick and tick them again.
+
+Starting SessionKeeper while it's already open brings the existing window forward, including from the tray.
+
+## Command line
+
+The same exe has command-line options. It never opens the window when you use them:
+
+```text
+SessionKeeper.exe --list [--json]                         running sessions
+SessionKeeper.exe --recent [--days N] [--json]            sessions active in the last N days (default 1)
+SessionKeeper.exe --snapshots [--json]                    saved snapshots
+SessionKeeper.exe --snapshot ["note"] [--name "name"] [--json]   save the running sessions
+SessionKeeper.exe --install-shortcut                      add the Start menu shortcut
+SessionKeeper.exe --help | --version
+```
+
+- `--snapshot` uses the same rules as the Save dialog. Matched sessions are saved, and unmatched or still-starting processes are skipped and listed.
+- Exit codes: 0 means OK, 1 means nothing to do or an error, and 2 means a usage error.
+- PowerShell doesn't wait for GUI apps, so pipe the output: `SessionKeeper.exe --list | Out-Host`.
+- `SESSIONKEEPER_SNAPSHOTS` sets a different snapshots folder.
+
+## Claude Code skill
+
+`skills/session-keeper/` lets you ask Claude Code things like:
+- "open SessionKeeper"
+- "list my running sessions"
+- "what did I work on today?"
+- "save a snapshot of my sessions with the note waiting on council results"
+
+It runs the command-line options above through `sessionkeeper.ps1`, which finds `SessionKeeper.exe` in this order:
+1. The `SESSIONKEEPER_EXE` environment variable.
+2. `%LOCALAPPDATA%\Programs\SessionKeeper\SessionKeeper.exe`.
+3. `PATH`.
+
+Restoring sessions stays in the app, because that opens terminal tabs.
+
+`install.ps1` installs the skill for you. To install it by hand, copy the folder:
+
+```powershell
+Copy-Item -Recurse -Force skills\session-keeper "$env:USERPROFILE\.claude\skills\"
+```
+
+Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. Then start a new Claude Code session so it picks the skill up.
 
 ## The three tabs
 
@@ -28,7 +100,7 @@ Hover over a row to see the full path, session ID, and first and last messages.
 | Session details | `%USERPROFILE%\.claude\projects\<encoded-folder>\<sessionId>.jsonl`. The app reads the `cwd`, `timestamp`, user messages, and the `ai-title`, `custom-title` and `last-prompt` records. Files are append-only, so each one is parsed incrementally and cached. For a transcript over 8 MB, the first look reads only the first 256 KB and the last 1 MB. |
 | Folder checks | Done off the UI thread and cached, so an offline network drive can't freeze the window. |
 | Reopen | `wt -w <name> new-tab -d <folder> powershell -NoExit -EncodedCommand …`, which runs `claude --resume <id>` in that folder. If Windows Terminal isn't installed, separate PowerShell windows are used. |
-| Snapshots | Readable JSON in `%APPDATA%\SessionKeeper\snapshots\`. |
+| Snapshots | Readable JSON in `%APPDATA%\SessionKeeper\snapshots\`, with an optional note for the whole snapshot and per-session notes. |
 
 `CLAUDE_CONFIG_DIR` is respected if set.
 

@@ -19,7 +19,7 @@ public partial class SaveSnapshotWindow : Window
         _candidates = candidates;
         foreach (var c in _candidates) c.PropertyChanged += Candidate_PropertyChanged;
         List.ItemsSource = _candidates;
-        NameBox.Text = "Snapshot " + DateTime.Now.ToString("ddd d MMM HH:mm");
+        NameBox.Text = SessionQueries.DefaultSnapshotName(DateTimeOffset.Now);
         Loaded += (_, _) => { NameBox.Focus(); NameBox.SelectAll(); };
         UpdateCount();
     }
@@ -42,6 +42,9 @@ public partial class SaveSnapshotWindow : Window
         SaveButton.IsEnabled = n > 0;
     }
 
+    private void SnapshotNoteBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e) =>
+        SnapshotNotePlaceholder.Visibility = SnapshotNoteBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+
     private void All_Click(object sender, RoutedEventArgs e) { foreach (var c in _candidates) c.IsChecked = true; }
     private void None_Click(object sender, RoutedEventArgs e) { foreach (var c in _candidates) c.IsChecked = false; }
 
@@ -60,6 +63,7 @@ public partial class SaveSnapshotWindow : Window
         {
             Name = name,
             CreatedAt = DateTimeOffset.Now,
+            Note = string.IsNullOrWhiteSpace(SnapshotNoteBox.Text) ? null : SnapshotNoteBox.Text.Trim(),
             Sessions = picked.Select(c => new SnapshotSession
             {
                 SessionId = c.SessionId,
