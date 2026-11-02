@@ -64,17 +64,89 @@ public sealed class LauncherTests
         Assert.DoesNotContain(";", withSemi); // title is sanitised, script is base64
         var normal = Launcher.BuildTabArgs(new LaunchItem(@"C:\Projects\x y", Id, "x y"), "claude");
         Assert.Contains("-d \"C:\\Projects\\x y\"", normal);
+        // wt expands %VAR% in -d, so such folders rely on the script's Set-Location instead.
+        Assert.DoesNotContain(" -d ", Launcher.BuildTabArgs(new LaunchItem(@"C:\p\%OS%", Id, "x"), "claude"));
+    }
+
+    [Fact]
+    public void CleanEnvironmentRemovesOnlySessionScopedVariables()
+    {
+        var psi = new ProcessStartInfo("x.exe");
+        psi.Environment["CLAUDECODE"] = "1";
+        psi.Environment["CLAUDE_CODE_SESSION_ID"] = "abc";
+        psi.Environment["CLAUDE_CONFIG_DIR"] = @"D:\cc";
+        psi.Environment["CLAUDE_CODE_USE_BEDROCK"] = "1";
+        Launcher.CleanEnvironment(psi);
+        Assert.False(psi.Environment.ContainsKey("CLAUDECODE"));
+        Assert.False(psi.Environment.ContainsKey("CLAUDE_CODE_SESSION_ID"));
+        Assert.Equal(@"D:\cc", psi.Environment["CLAUDE_CONFIG_DIR"]);
+        Assert.Equal("1", psi.Environment["CLAUDE_CODE_USE_BEDROCK"]);
+    }
+
+    [Fact]
+    public void ScriptForwardsConfigDirAsQuotedLiteral()
+    {
+        var s = Launcher.BuildScript(new LaunchItem(@"C:\x", Id, "x"), "claude", @"D:\it's cc");
+        Assert.Contains("$env:CLAUDE_CONFIG_DIR = 'D:\\it''s cc';", s);
+        Assert.DoesNotContain("CLAUDE_CONFIG_DIR", Launcher.BuildScript(new LaunchItem(@"C:\x", Id, "x"), "claude"));
+    }
+
+    [Fact]
+    public void ValidateRejectsLoneSurrogates()
+    {
+        Assert.NotNull(Launcher.Validate(new LaunchItem(Path.GetTempPath() + "a\uD83Db", Id, "x")));
+    }
+
+    /// <summary>If the folder can't be entered, claude must not start (in whatever folder the shell is in).</summary>
+    [Fact]
+    public void ScriptStopsWhenFolderCannotBeEntered()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "sk-stop-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var fake = Path.Combine(root, "fake.cmd");
+        var marker = Path.Combine(root, "ran.txt");
+        File.WriteAllText(fake, $"@echo ran> \"{marker}\"\r\n");
+        try
+        {
+            var script = Launcher.BuildScript(new LaunchItem(Path.Combine(root, "gone"), Id, "gone"), fake);
+            var (_, _) = RunPowerShell(script, root);
+            Assert.False(File.Exists(marker), "claude ran even though Set-Location failed");
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { }
+        }
+    }
+
+    private static (string StdOut, string StdErr) RunPowerShell(string script, string workingDir)
+    {
+        var psi = new ProcessStartInfo(Launcher.PowerShellPath, "-NoProfile -NonInteractive -EncodedCommand " + Launcher.Encode(script))
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            WorkingDirectory = workingDir,
+        };
+        using var p = Process.Start(psi)!;
+        var stdout = p.StandardOutput.ReadToEnd();
+        var stderr = p.StandardError.ReadToEnd();
+        p.WaitForExit(30_000);
+        return (stdout, stderr);
     }
 
     [Fact]
     public void WtCommandLinesAreChunkedUnderLimit()
     {
         var items = Enumerable.Range(0, 120).Select(i => new LaunchItem(@"C:\Projects\folder-" + i, Id, "folder " + i)).ToList();
-        var lines = Launcher.BuildWtCommandLines(items, @"D:\Tools\claude\claude.exe", "sessionkeeper-test");
+        var chunks = Launcher.BuildWtCommandLines(items, @"D:\Tools\claude\claude.exe", "sessionkeeper-test");
+        var lines = chunks.Select(c => c.CommandLine).ToList();
         Assert.True(lines.Count > 1);
         Assert.All(lines, l => Assert.True(l.Length < 32_000));
         Assert.All(lines, l => Assert.StartsWith("-w sessionkeeper-test new-tab", l));
         Assert.Equal(120, lines.Sum(l => System.Text.RegularExpressions.Regex.Matches(l, "new-tab --title").Count));
+        Assert.Equal(120, chunks.Sum(c => c.Items.Count));
+        Assert.All(chunks, c => Assert.Equal(c.Items.Count, System.Text.RegularExpressions.Regex.Matches(c.CommandLine, "new-tab --title").Count));
     }
 
     [Fact]

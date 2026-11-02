@@ -97,7 +97,7 @@
                 </StackPanel>
             </DockPanel>
             <ListBox x:Name="RecentList" Grid.Row="1" Style="{StaticResource RowList}" SelectionMode="Single"
-                     KeyDown="RecentList_KeyDown">
+                     PreviewKeyDown="RecentList_PreviewKeyDown">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <Grid ToolTip="{Binding Tooltip}" Background="Transparent">

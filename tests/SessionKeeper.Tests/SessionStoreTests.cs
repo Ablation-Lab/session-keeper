@@ -105,6 +105,55 @@ public sealed class SessionStoreTests : IDisposable
     }
 
     [Fact]
+    public void LoneSurrogateEscapeDoesNotStallTheFile()
+    {
+        // JSON.stringify of a string cut mid-emoji produces a lone surrogate escape; GetString() throws on it.
+        Write(User(J("first"), "2026-11-02T10:00:00Z"),
+              "{\"type\":\"last-prompt\",\"lastPrompt\":\"cut emoji \\ud83d\",\"sessionId\":\"" + Id + "\"}",
+              User(J("after the bad line"), "2026-11-02T10:10:00Z"));
+        var store = new SessionStore(_root);
+        var info = store.GetSessionFromFile(FilePath)!;
+        Assert.Equal("after the bad line", info.LastPrompt);
+        Write(User(J("appended later"), "2026-11-02T10:20:00Z"));
+        Assert.Equal("appended later", store.GetSessionFromFile(FilePath)!.LastPrompt);
+    }
+
+    [Fact]
+    public void LargeFileFirstLoadReadsHeadAndTailThenAppends()
+    {
+        var filler = "{\"type\":\"api-request-blob\",\"message\":\"" + new string('z', 1000) + "\"}";
+        var lines = new List<string> { User(J("the first ask"), "2026-11-02T09:00:00Z") };
+        lines.AddRange(Enumerable.Repeat(filler, 9 * 1024)); // ~9 MB, over the fast-path threshold
+        lines.Add("{\"type\":\"ai-title\",\"aiTitle\":\"Tail title\",\"sessionId\":\"" + Id + "\"}");
+        lines.Add(User(J("the latest ask"), "2026-11-02T12:00:00Z"));
+        Write(lines.ToArray());
+
+        var store = new SessionStore(_root);
+        var info = store.GetSessionFromFile(FilePath)!;
+        Assert.Equal(Cwd, info.ProjectDir);
+        Assert.Equal("the first ask", info.FirstPrompt);
+        Assert.Equal("the latest ask", info.LastPrompt);
+        Assert.Equal("Tail title", info.Title);
+        Assert.Equal(DateTimeOffset.Parse("2026-11-02T12:00:00Z"), info.LastActive);
+
+        Write(User(J("one more"), "2026-11-02T13:00:00Z"));
+        Assert.Equal("one more", store.GetSessionFromFile(FilePath)!.LastPrompt);
+    }
+
+    [Fact]
+    public void RewrittenLargerFileIsReparsed()
+    {
+        var store = new SessionStore(_root);
+        Write(User(J("old content"), "2026-11-02T10:00:00Z"));
+        Assert.Equal("old content", store.GetSessionFromFile(FilePath)!.LastPrompt);
+
+        // Replace the file with different, longer content (offset no longer on a line boundary).
+        File.WriteAllText(FilePath, User(J("completely different and longer content here"), "2026-11-02T11:00:00Z", extra: ",\"pad\":\"xxxxxxxxxxxxxxxxxxxxxxxx\"") + "\n");
+        var info = store.GetSessionFromFile(FilePath)!;
+        Assert.Equal("completely different and longer content here", info.FirstPrompt);
+    }
+
+    [Fact]
     public void FileWithoutConversationIsIgnored()
     {
         Write("{\"type\":\"mode\",\"mode\":\"normal\",\"sessionId\":\"" + Id + "\"}");

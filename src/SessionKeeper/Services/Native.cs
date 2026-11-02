@@ -55,7 +55,7 @@ internal static class Native
         if (h.IsInvalid) return new ProcessFacts(null, null, null);
 
         string? path = null;
-        var sb = new StringBuilder(1024);
+        var sb = new StringBuilder(32768);
         int size = sb.Capacity;
         if (QueryFullProcessImageName(h, 0, sb, ref size)) path = sb.ToString(0, size);
 

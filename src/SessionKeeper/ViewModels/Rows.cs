@@ -56,12 +56,6 @@ internal static class Fmt
         return string.IsNullOrEmpty(name) ? dir : name;
     }
 
-    public static bool FolderExists(string? dir)
-    {
-        try { return !string.IsNullOrEmpty(dir) && Directory.Exists(dir); }
-        catch { return false; }
-    }
-
     public static string ShortId(string? id) => string.IsNullOrEmpty(id) ? "" : id.Length > 8 ? id[..8] : id;
 }
 
@@ -80,16 +74,41 @@ internal static class Brushes2
     public static readonly SolidColorBrush Unmatched = B("#E07A7A");
 }
 
-/// <summary>A row on the "Current" tab.</summary>
-public sealed class CurrentRow
+/// <summary>
+/// A row on the "Current" tab. Rows are updated in place on each refresh (keyed by PID) so tooltips,
+/// scroll position and focus survive the 10-second auto-refresh.
+/// </summary>
+public sealed class CurrentRow : Observable
 {
-    public required RunningSession Running { get; init; }
-    public SessionInfo? Info { get; init; }
+    private RunningSession _running;
+    private SessionInfo? _info;
+    private bool _folderMissing;
+
+    /// <summary>Build off the UI thread: <paramref name="folderMissing"/> comes from <see cref="Services.FolderProbe"/>.</summary>
+    public CurrentRow(RunningSession running, SessionInfo? info, bool folderMissing)
+    {
+        _running = running;
+        _info = info;
+        _folderMissing = folderMissing;
+    }
+
+    public void UpdateFrom(CurrentRow newer)
+    {
+        _running = newer._running;
+        _info = newer._info;
+        _folderMissing = newer._folderMissing;
+        Raise(string.Empty); // refresh every binding on this row
+    }
+
+    public void RefreshTimes() => Raise(nameof(AgoText));
+
+    public RunningSession Running => _running;
+    public SessionInfo? Info => _info;
 
     public string? SessionId => Running.SessionId;
     public string? ProjectDir => Info?.ProjectDir ?? Running.Cwd;
     public string FolderName => Fmt.FolderName(ProjectDir);
-    public bool FolderMissing => ProjectDir != null && !Fmt.FolderExists(ProjectDir);
+    public bool FolderMissing => _folderMissing;
     public Visibility MissingVisibility => FolderMissing ? Visibility.Visible : Visibility.Collapsed;
 
     public string TitleText => Running.Name ?? Info?.Title ?? "";
@@ -149,7 +168,8 @@ public sealed class RecentRow : Observable
     public bool IsChecked { get => _isChecked; set => Set(ref _isChecked, value); }
 
     public string FolderName => Fmt.FolderName(Info.ProjectDir);
-    public bool FolderMissing => !Fmt.FolderExists(Info.ProjectDir);
+    /// <summary>Set off the UI thread via <see cref="Services.FolderProbe"/>.</summary>
+    public bool FolderMissing { get; init; }
     public Visibility MissingVisibility => FolderMissing ? Visibility.Visible : Visibility.Collapsed;
     public Visibility RunningVisibility => IsRunning ? Visibility.Visible : Visibility.Collapsed;
     public string TitleText => Info.Title ?? "";
@@ -191,7 +211,8 @@ public sealed class SnapshotSessionRow
     public required SnapshotSession Session { get; init; }
     public bool IsRunning { get; init; }
     public string FolderName => Fmt.FolderName(Session.ProjectDir);
-    public bool FolderMissing => !Fmt.FolderExists(Session.ProjectDir);
+    /// <summary>Set off the UI thread via <see cref="Services.FolderProbe"/>.</summary>
+    public bool FolderMissing { get; init; }
     public Visibility MissingVisibility => FolderMissing ? Visibility.Visible : Visibility.Collapsed;
     public Visibility RunningVisibility => IsRunning ? Visibility.Visible : Visibility.Collapsed;
     public string Summary => Session.SessionId == null

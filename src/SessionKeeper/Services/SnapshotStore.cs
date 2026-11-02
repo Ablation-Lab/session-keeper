@@ -94,8 +94,21 @@ public sealed class SnapshotStore
     private static void WriteAtomic(string path, Snapshot snap)
     {
         var tmp = path + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(snap, JsonOptions), new UTF8Encoding(false));
-        File.Move(tmp, path, overwrite: true);
+        try
+        {
+            var bytes = new UTF8Encoding(false).GetBytes(JsonSerializer.Serialize(snap, JsonOptions));
+            using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                fs.Write(bytes);
+                fs.Flush(flushToDisk: true);
+            }
+            File.Move(tmp, path, overwrite: true);
+        }
+        catch
+        {
+            try { File.Delete(tmp); } catch { }
+            throw;
+        }
     }
 
     /// <summary>File-name-safe slug: letters, digits and dashes only, max 40 chars.</summary>

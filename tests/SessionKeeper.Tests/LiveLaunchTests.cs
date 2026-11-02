@@ -23,9 +23,9 @@ public sealed class LiveLaunchTests(ITestOutputHelper output)
         Directory.CreateDirectory(b);
 
         var result = Launcher.Launch(new[] { new LaunchItem(a, null, "plain folder"), new LaunchItem(b, null, "semi;colon it's") });
-        output.WriteLine($"opened={result.Opened.Count} skipped={result.Skipped.Count} error={result.Error} psFallback={result.UsedPowerShellWindows}");
+        output.WriteLine($"opened={result.OpenedItems.Count} skipped={result.Skipped.Count} error={result.Error} psFallback={result.UsedPowerShellWindows}");
         Assert.Null(result.Error);
-        Assert.Equal(2, result.Opened.Count);
+        Assert.Equal(2, result.OpenedItems.Count);
 
         List<RunningSession> found = new();
         for (int i = 0; i < 20 && found.Count < 2; i++)

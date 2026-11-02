@@ -41,6 +41,8 @@ public sealed class Snapshot
     public string Name { get; set; } = "";
     public DateTimeOffset CreatedAt { get; set; }
     public List<SnapshotSession> Sessions { get; set; } = new();
+    /// <summary>Unknown fields from a hand-edited file, preserved on rename.</summary>
+    [JsonExtensionData] public Dictionary<string, System.Text.Json.JsonElement>? Extra { get; set; }
 }
 
 public sealed class SnapshotSession
@@ -52,6 +54,7 @@ public sealed class SnapshotSession
     public string? Summary { get; set; }
     public DateTimeOffset? LastActive { get; set; }
     public string? Note { get; set; }
+    [JsonExtensionData] public Dictionary<string, System.Text.Json.JsonElement>? Extra { get; set; }
 }
 
 /// <summary>A snapshot file on disk plus its parsed content (or the reason it could not be read).</summary>

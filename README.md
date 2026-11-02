@@ -25,7 +25,8 @@ Hover over a row to see the full path, session ID, and first and last messages.
 |---|---|
 | Running sessions | `%USERPROFILE%\.claude\sessions\<pid>.json`, Claude Code's live registry (pid, sessionId, cwd, busy/idle/waiting status, process start time). Each entry is checked against the live process table: the PID must be alive and its start time must match, because a killed process leaves its entry behind. |
 | Unregistered processes | `claude.exe` processes with no registry entry are still shown as *unmatched*, with their folder read from the process when Windows allows it. Elevated processes show "folder unknown". |
-| Session details | `%USERPROFILE%\.claude\projects\<encoded-folder>\<sessionId>.jsonl`. The app reads the `cwd`, `timestamp`, user messages, and the `ai-title`, `custom-title` and `last-prompt` records. Files are append-only, so each one is parsed incrementally and cached. |
+| Session details | `%USERPROFILE%\.claude\projects\<encoded-folder>\<sessionId>.jsonl`. The app reads the `cwd`, `timestamp`, user messages, and the `ai-title`, `custom-title` and `last-prompt` records. Files are append-only, so each one is parsed incrementally and cached. For a transcript over 8 MB, the first look reads only the first 256 KB and the last 1 MB. |
+| Folder checks | Done off the UI thread and cached, so an offline network drive can't freeze the window. |
 | Reopen | `wt -w <name> new-tab -d <folder> powershell -NoExit -EncodedCommand …`, which runs `claude --resume <id>` in that folder. If Windows Terminal isn't installed, separate PowerShell windows are used. |
 | Snapshots | Readable JSON in `%APPDATA%\SessionKeeper\snapshots\`. |
 
@@ -34,7 +35,12 @@ Hover over a row to see the full path, session ID, and first and last messages.
 ## Safety
 
 - **Read-only towards Claude Code.** Session files and registry entries are opened read-only with full sharing. Processes are opened with query/read rights only. Nothing is ever written to, deleted from or killed in Claude Code's files or processes.
-- **No command injection.** Folder names, titles and notes are never parsed as commands. Each tab runs a base64 `-EncodedCommand` script. Its only dynamic values are single-quoted PowerShell literals, with every quote character doubled (including Unicode ‘ ’ quotes), and a session ID that must parse as a GUID. Tab titles are reduced to letters, digits and `-_.() `. A folder containing `;`, which is wt's command separator, is not passed to `-d` at all. Notes are never passed to any process.
+- **No command injection.** Folder names, titles and notes are never parsed as commands. Each tab runs a base64 `-EncodedCommand` script. Its only dynamic values are single-quoted PowerShell literals, with every quote character doubled (including Unicode ‘ ’ quotes), and a session ID that must parse as a GUID. Tab titles are reduced to letters, digits and `-_.() `. A folder containing `;` or `%` is not passed to `-d` at all, because wt splits on `;` and expands `%VAR%`. Notes are never passed to any process.
+- **The right folder, the right claude.**
+  - If the script can't enter the folder, it stops instead of starting claude somewhere else.
+  - `claude` is resolved to a full path, and relative `PATH` entries are ignored, so a repository can't plant its own `claude.cmd`.
+  - `NoDefaultCurrentDirectoryInExePath` is set in each tab, so npm's `claude.cmd` shim can't pick up a `node.exe` from the project folder.
+  - A conversation is only resumed in the folder it belongs to.
 - **Before reopening:** missing folders are skipped and listed. Sessions whose conversation file has gone are skipped. Sessions that are already running trigger a prompt, because opening one twice means two terminals writing to the same conversation.
 - If SessionKeeper itself was started from inside a Claude Code session, the `CLAUDE*` variables it inherited are removed before launching. Otherwise the new `claude` wouldn't start normally.
 

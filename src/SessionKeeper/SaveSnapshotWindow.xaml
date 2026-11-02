@@ -65,7 +65,7 @@
             <TextBlock x:Name="CountText" Style="{StaticResource MutedText}" VerticalAlignment="Center"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="Cancel" IsCancel="True"/>
-                <Button x:Name="SaveButton" Style="{StaticResource PrimaryButton}" Content="Save snapshot" IsDefault="True" Click="Save_Click"/>
+                <Button x:Name="SaveButton" Style="{StaticResource PrimaryButton}" Content="Save snapshot" Click="Save_Click"/>
             </StackPanel>
         </DockPanel>
     </Grid>

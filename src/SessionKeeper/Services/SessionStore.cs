@@ -15,8 +15,12 @@ namespace SessionKeeper.Services;
 public sealed class SessionStore
 {
     private const int MaxLineBytes = 4 * 1024 * 1024; // larger lines (image blobs etc.) are skipped
+    private const long FastPathThreshold = 8L * 1024 * 1024;
+    private const long HeadBytes = 256 * 1024;
+    private const long TailBytes = 1024 * 1024;
     private readonly object _gate = new();
     private readonly Dictionary<string, ParseState> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private ArrayBufferWriter<byte> _carry = new(); // reused for lines spanning read buffers (guarded by _gate)
 
     public string ProjectsRoot { get; }
 
@@ -69,7 +73,8 @@ public sealed class SessionStore
                 st = new ParseState(file);
                 _cache[file] = st;
             }
-            st.Update();
+            st.Update(_carry);
+            if (_carry.Capacity > 1024 * 1024) _carry = new(); // don't pin a multi-MB buffer all day
             return st.ToInfo();
         }
     }
@@ -129,7 +134,7 @@ public sealed class SessionStore
             _hasConversation = false;
         }
 
-        public void Update()
+        public void Update(ArrayBufferWriter<byte> carry)
         {
             FileInfo fi;
             try
@@ -140,32 +145,59 @@ public sealed class SessionStore
             catch (Exception) { _missing = true; return; }
 
             _missing = false;
-            if (fi.Length < _offset) Reset(); // truncated / rewritten
             if (fi.Length == _offset) { _lastWriteUtc = fi.LastWriteTimeUtc; return; }
 
             try
             {
                 using var fs = new FileStream(_path, FileMode.Open, FileAccess.Read,
                     FileShare.ReadWrite | FileShare.Delete, 1, FileOptions.SequentialScan);
-                fs.Seek(_offset, SeekOrigin.Begin);
-                ReadLines(fs);
+                long len = fs.Length;
+
+                // Truncated, or rewritten to a larger size (our offset no longer sits on a line boundary).
+                if (len < _offset || (_offset > 0 && !EndsLineAt(fs, _offset))) Reset();
+
+                if (_offset == 0 && len > FastPathThreshold)
+                {
+                    // First look at a big transcript: the head has the project cwd and first prompt; the tail
+                    // has the latest activity, last-prompt and ai-title (Claude re-emits those constantly).
+                    // Everything appended later is still read in full.
+                    ReadLines(fs, 0, HeadBytes, carry, skipPartialFirst: false);
+                    _offset = ReadLines(fs, len - TailBytes, len, carry, skipPartialFirst: true);
+                }
+                else
+                {
+                    _offset = ReadLines(fs, _offset, len, carry, skipPartialFirst: false);
+                }
                 _lastWriteUtc = fi.LastWriteTimeUtc;
             }
-            catch (IOException) { /* try again next refresh */ }
-            catch (UnauthorizedAccessException) { }
+            catch (Exception)
+            {
+                // Locked, mid-rotation or unreadable: try again next refresh.
+            }
         }
 
-        private void ReadLines(FileStream fs)
+        private static bool EndsLineAt(FileStream fs, long offset)
+        {
+            fs.Seek(offset - 1, SeekOrigin.Begin);
+            return fs.ReadByte() == '\n';
+        }
+
+        /// <summary>
+        /// Parses complete lines in [start, end). Returns the position just after the last complete line
+        /// (a partial trailing line is re-read next time, since Claude may be mid-write).
+        /// </summary>
+        private long ReadLines(FileStream fs, long start, long end, ArrayBufferWriter<byte> carry, bool skipPartialFirst)
         {
             var buf = ArrayPool<byte>.Shared.Rent(1 << 20);
-            var carry = new ArrayBufferWriter<byte>();
-            bool skipping = false;       // inside an oversized line
-            long readPos = _offset;      // file position of buf[0]
-            long consumed = _offset;     // position just after the last complete line
+            carry.Clear();
+            bool skipping = skipPartialFirst; // inside an oversized line, or the partial line we seeked into
+            long readPos = start;             // file position of buf[0]
+            long consumed = start;            // position just after the last complete line
+            fs.Seek(start, SeekOrigin.Begin);
             try
             {
                 int n;
-                while ((n = fs.Read(buf, 0, buf.Length)) > 0)
+                while (readPos < end && (n = fs.Read(buf, 0, (int)Math.Min(buf.Length, end - readPos))) > 0)
                 {
                     int i = 0;
                     while (i < n)
@@ -198,12 +230,12 @@ public sealed class SessionStore
                     }
                     readPos += n;
                 }
-                // A partial trailing line is re-read next time (Claude may be mid-write).
                 // An oversized partial line is skipped past; its tail will fail to parse and be ignored.
-                _offset = skipping ? readPos : consumed;
+                return skipping ? readPos : consumed;
             }
             finally
             {
+                carry.Clear();
                 ArrayPool<byte>.Shared.Return(buf);
             }
         }
@@ -269,9 +301,10 @@ public sealed class SessionStore
                         break;
                 }
             }
-            catch (JsonException)
+            catch (Exception)
             {
-                // Malformed or half-written line: ignore.
+                // Malformed or half-written line, or a string cut mid-surrogate (GetString throws
+                // InvalidOperationException): ignore this line, never stall the whole file.
             }
         }
 
@@ -355,13 +388,21 @@ public sealed class SessionStore
 
 internal static class ClaudePaths
 {
-    public static string ClaudeDir
+    /// <summary>CLAUDE_CONFIG_DIR when it is set and exists (forwarded to launched sessions), else null.</summary>
+    public static string? CustomConfigDir
     {
         get
         {
             var cfg = Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR");
-            if (!string.IsNullOrWhiteSpace(cfg) && Directory.Exists(cfg)) return cfg;
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude");
+            try
+            {
+                return !string.IsNullOrWhiteSpace(cfg) && Path.IsPathFullyQualified(cfg) && Directory.Exists(cfg)
+                    ? Path.GetFullPath(cfg) : null;
+            }
+            catch { return null; }
         }
     }
+
+    public static string ClaudeDir =>
+        CustomConfigDir ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude");
 }
