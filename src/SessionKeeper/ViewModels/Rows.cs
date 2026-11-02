@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
 using SessionKeeper.Models;
+using SessionKeeper.Services;
 
 namespace SessionKeeper.ViewModels;
 
@@ -114,6 +115,15 @@ public sealed class CurrentRow : Observable
     public string TitleText => Running.Name ?? Info?.Title ?? "";
     public Visibility TitleVisibility => TitleText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>Only a matched session with a conversation file can be resumed by ID.</summary>
+    public bool CanOpen => ProjectDir != null && SessionId != null && Info != null;
+    public string OpenTooltip => CanOpen
+        ? "Open this session in a new window (it's already running, so you'll be asked first)"
+        : Running.State is RunState.Unmatched or RunState.Starting
+            ? "Can't open: this process isn't matched to a session ID"
+            : "Can't open: the session has no messages yet, so there's nothing to resume";
+    public LaunchItem? ToLaunchItem() => CanOpen ? new LaunchItem(ProjectDir!, SessionId, FolderName) : null;
+
     public string Summary =>
         Running.State == RunState.Unmatched ? "Unmatched: " + (Running.Cwd == null ? "folder unknown" : "not in Claude's session registry")
         : Running.State == RunState.Starting ? "Starting…"
@@ -177,6 +187,9 @@ public sealed class RecentRow : Observable
     public string Summary => Fmt.Trim(Info.LastPrompt ?? Info.FirstPrompt, 160);
     public string WhenText => Fmt.When(Info.LastActive);
     public string ShortId => Fmt.ShortId(Info.SessionId);
+    public bool CanOpen => Info.ProjectDir != null;
+    public string OpenTooltip => CanOpen ? "Open this session in a new window" : "Can't open: the session's folder isn't known";
+    public LaunchItem? ToLaunchItem() => CanOpen ? new LaunchItem(Info.ProjectDir!, Info.SessionId, FolderName) : null;
     public bool IsToday => Info.LastActive.ToLocalTime().Date == DateTime.Today;
 
     public string Tooltip
@@ -218,6 +231,13 @@ public sealed class SnapshotSessionRow
     public string Summary => Session.SessionId == null
         ? "New session in this folder"
         : Fmt.Trim(Session.Title is { } t && Session.Summary is { } s ? $"{t} — {s}" : Session.Title ?? Session.Summary, 160);
+    public bool CanOpen => !string.IsNullOrWhiteSpace(Session.ProjectDir);
+    public string OpenTooltip => !CanOpen ? "Can't open: no folder recorded"
+        : Session.SessionId == null ? "Start a new Claude Code session in this folder (no session ID was saved)"
+        : "Open this session in a new window";
+    public LaunchItem? ToLaunchItem() => CanOpen
+        ? new LaunchItem(Session.ProjectDir, Services.SessionStore.IsValidSessionId(Session.SessionId) ? Session.SessionId : null, FolderName)
+        : null;
     public string Note => Session.Note ?? "";
     public Visibility NoteVisibility => string.IsNullOrWhiteSpace(Session.Note) ? Visibility.Collapsed : Visibility.Visible;
     public string Tooltip => string.Join("\n", new[]

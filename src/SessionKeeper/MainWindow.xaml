@@ -21,6 +21,18 @@
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="Foreground" Value="{StaticResource Faint}"/>
         </Style>
+        <Style x:Key="RowOpenButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Content" Value="Open"/>
+            <Setter Property="Padding" Value="12,3"/>
+            <Setter Property="Margin" Value="12,0,0,0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="ToolTipService.ShowOnDisabled" Value="True"/>
+        </Style>
+        <!-- Double-click (or Enter) on a row does the same as its Open button. -->
+        <Style x:Key="OpenableItem" TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+            <EventSetter Event="MouseDoubleClick" Handler="Row_DoubleClick"/>
+        </Style>
     </Window.Resources>
 
     <Grid Margin="12,10,12,12">
@@ -46,13 +58,15 @@
 
         <!-- ============================== CURRENT ============================== -->
         <Grid x:Name="PanelCurrent" Grid.Row="1">
-            <ListBox x:Name="CurrentList" Style="{StaticResource RowList}">
+            <ListBox x:Name="CurrentList" Style="{StaticResource RowList}" ItemContainerStyle="{StaticResource OpenableItem}"
+                     PreviewKeyDown="SessionList_PreviewKeyDown">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <Grid ToolTip="{Binding Tooltip}" Background="Transparent">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <Ellipse Width="9" Height="9" Fill="{Binding StatusBrush}" VerticalAlignment="Top" Margin="0,5,10,0"/>
@@ -73,6 +87,8 @@
                                 <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}" FontSize="12"
                                            HorizontalAlignment="Right" Margin="0,2,0,0"/>
                             </StackPanel>
+                            <Button Grid.Column="3" Style="{StaticResource RowOpenButton}" Click="Open_Click"
+                                    IsEnabled="{Binding CanOpen}" ToolTip="{Binding OpenTooltip}"/>
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
@@ -101,13 +117,14 @@
                 </StackPanel>
             </DockPanel>
             <ListBox x:Name="RecentList" Grid.Row="1" Style="{StaticResource RowList}" SelectionMode="Single"
-                     PreviewKeyDown="RecentList_PreviewKeyDown">
+                     ItemContainerStyle="{StaticResource OpenableItem}" PreviewKeyDown="SessionList_PreviewKeyDown">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <Grid ToolTip="{Binding Tooltip}" Background="Transparent">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" VerticalAlignment="Top" Margin="0,2,10,0"/>
@@ -132,6 +149,8 @@
                                 <TextBlock Text="{Binding ShortId}" Style="{StaticResource MonoText}" HorizontalAlignment="Right" Margin="0,3,0,0"
                                            ToolTip="{Binding Info.SessionId}"/>
                             </StackPanel>
+                            <Button Grid.Column="3" Style="{StaticResource RowOpenButton}" Click="Open_Click"
+                                    IsEnabled="{Binding CanOpen}" ToolTip="{Binding OpenTooltip}"/>
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
@@ -174,9 +193,15 @@
                     <TextBlock x:Name="SnapshotNote" Foreground="{StaticResource Note}" FontStyle="Italic" FontSize="12"
                                TextWrapping="Wrap" Margin="0,3,0,0" Visibility="Collapsed"/>
                 </StackPanel>
-                <ListBox x:Name="SnapshotSessions" Grid.Row="1" Style="{StaticResource RowList}">
+                <ListBox x:Name="SnapshotSessions" Grid.Row="1" Style="{StaticResource RowList}"
+                         ItemContainerStyle="{StaticResource OpenableItem}" PreviewKeyDown="SessionList_PreviewKeyDown">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
+                            <Grid Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
                             <StackPanel ToolTip="{Binding Tooltip}" Background="Transparent">
                                 <DockPanel LastChildFill="False">
                                     <TextBlock DockPanel.Dock="Left" Text="{Binding FolderName}" Style="{StaticResource FolderText}"/>
@@ -193,6 +218,9 @@
                                 <TextBlock Text="{Binding Note}" Foreground="{StaticResource Note}" FontStyle="Italic" FontSize="12"
                                            TextWrapping="Wrap" Margin="0,3,0,0" Visibility="{Binding NoteVisibility}"/>
                             </StackPanel>
+                            <Button Grid.Column="1" Style="{StaticResource RowOpenButton}" Click="Open_Click"
+                                    IsEnabled="{Binding CanOpen}" ToolTip="{Binding OpenTooltip}"/>
+                            </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>

@@ -273,16 +273,6 @@ public partial class MainWindow : Window
         foreach (var r in _recentRows) r.IsChecked = false;
     }
 
-    // PreviewKeyDown: ListBox marks Space as handled itself, so a bubbling KeyDown never sees it.
-    private void RecentList_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Space && RecentList.SelectedItem is RecentRow row)
-        {
-            row.IsChecked = !row.IsChecked;
-            e.Handled = true;
-        }
-    }
-
     private async void RefreshRecent_Click(object sender, RoutedEventArgs e) => await LoadRecentAsync();
 
     private async void Reopen_Click(object sender, RoutedEventArgs e)
@@ -528,45 +518,62 @@ public partial class MainWindow : Window
     // ============================================================ reopen
 
     /// <summary>
-    /// The only path that opens sessions. <paramref name="userAction"/> names the button that triggered it;
-    /// it opens the launch scope that <see cref="LaunchGuard"/> requires, so nothing else can launch.
+    /// The only path that opens sessions (Open, Reopen selected, Restore). <paramref name="userAction"/> names
+    /// the button that triggered it; it opens the launch scope that <see cref="LaunchGuard"/> requires, so
+    /// nothing else can launch. Sessions open as PowerShell windows or Windows Terminal tabs per Settings.
     /// </summary>
     private async Task ReopenAsync(List<LaunchItem> items, string userAction)
     {
         if (items.Count == 0 || _launching) return;
         _launching = true;
+        bool single = items.Count == 1;
         try
         {
             var running = await ScanRunningIdsAsync();
             var preSkipped = new List<string>();
 
             var already = items.Where(i => i.SessionId != null && running.Contains(i.SessionId)).ToList();
-            if (already.Count > 0)
+            if (already.Count > 0 && single)
             {
-                var names = string.Join("\n", already.Take(12).Select(a => "  • " + a.Label));
                 var answer = MessageBox.Show(this,
-                    $"{already.Count} of these sessions {(already.Count == 1 ? "is" : "are")} already open (or just opened):\n\n{names}\n\n" +
-                    "Opening a session twice means two terminals writing to the same conversation.\n\n" +
-                    "Skip the ones that are already open?\n\nYes = skip them (recommended)\nNo = open them anyway",
+                    $"\u201C{already[0].Label}\u201D is already running (it's listed under Current sessions).\n\n" +
+                    "Opening a second copy means two windows writing to the same conversation, which can mix up its history.\n\n" +
+                    "Open a second copy anyway?",
+                    "Session already running", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+                if (answer != MessageBoxResult.Yes)
+                {
+                    SetAllStatus("Not opened: that session is already running");
+                    return;
+                }
+            }
+            else if (already.Count > 0)
+            {
+                var names = string.Join("\n", already.Take(12).Select(a => "  \u2022 " + a.Label));
+                var answer = MessageBox.Show(this,
+                    $"{already.Count} of these sessions {(already.Count == 1 ? "is" : "are")} already running (or just opened):\n\n{names}\n\n" +
+                    "Opening a session twice means two windows writing to the same conversation.\n\n" +
+                    "Skip the ones that are already running?\n\nYes = skip them (recommended)\nNo = open second copies anyway",
                     "Already running", MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Yes);
                 if (answer == MessageBoxResult.Cancel) return;
                 if (answer == MessageBoxResult.Yes)
                 {
                     items = items.Except(already).ToList();
-                    preSkipped.AddRange(already.Select(a => a.Label + ": already open"));
+                    preSkipped.AddRange(already.Select(a => a.Label + ": already running"));
                 }
             }
 
-            // The transcript must still exist and belong to this folder, or `claude --resume` would fail
+            // Off the UI thread (folder checks can block on network paths): the folder must still exist, and
+            // the transcript must still exist and belong to this folder, or `claude --resume` would fail
             // (or resume in the wrong place).
             var checks = await Task.Run(() => items.Select(it =>
             {
-                if (it.SessionId == null) return (it, (string?)null);
+                if (!FolderProbe.Exists(it.ProjectDir)) return (it, (string?)$"the folder no longer exists ({it.ProjectDir})");
+                if (it.SessionId == null) return (it, null);
                 var file = _store.FindFile(it.SessionId, it.ProjectDir);
-                if (file == null) return (it, "conversation file not found");
+                if (file == null) return (it, "its conversation file was not found, so it can't be resumed");
                 var info = _store.GetSessionFromFile(file);
                 if (info?.ProjectDir != null && !string.Equals(info.ProjectDir.TrimEnd('\\'), it.ProjectDir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
-                    return (it, "conversation belongs to a different folder (" + info.ProjectDir + ")");
+                    return (it, "the conversation belongs to a different folder (" + info.ProjectDir + ")");
                 return (it, null);
             }).ToList());
             var ready = new List<LaunchItem>();
@@ -576,9 +583,10 @@ public partial class MainWindow : Window
                 else ready.Add(it);
             }
 
+            var mode = AppSettings.Load().OpenIn;
             if (ready.Count > 10 &&
-                MessageBox.Show(this, $"Open {ready.Count} terminal tabs?", "SessionKeeper", MessageBoxButton.OKCancel,
-                    MessageBoxImage.Question) != MessageBoxResult.OK)
+                MessageBox.Show(this, $"Open {ready.Count} {(mode == OpenMode.WindowsTerminalTab ? "Windows Terminal tabs" : "PowerShell windows")}?",
+                    "SessionKeeper", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
                 return;
 
             // The launch scope covers only the launch itself: no dialogs (and so no nested message loop that
@@ -587,13 +595,13 @@ public partial class MainWindow : Window
             if (ready.Count > 0)
             {
                 using (LaunchGuard.UserAction(userAction))
-                    result = await Task.Run(() => Launcher.Launch(ready));
+                    result = await Task.Run(() => Launcher.Launch(ready, mode));
             }
             else result = new LaunchResult();
             foreach (var it in result.OpenedItems.Where(r => r.SessionId != null))
                 _recentlyLaunched[it.SessionId!] = DateTime.UtcNow;
             result.Skipped.InsertRange(0, preSkipped);
-            ReportLaunch(result);
+            ReportLaunch(result, single);
 
             if (TabRecent.IsChecked == true) await LoadRecentAsync(); // show "running" badges straight away
         }
@@ -608,22 +616,94 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ReportLaunch(LaunchResult r)
+    private void SetAllStatus(string status)
+    {
+        _currentStatus = _recentStatus = _snapshotStatus = status;
+        UpdateStatus();
+    }
+
+    private void ReportLaunch(LaunchResult r, bool single)
     {
         var where = r.UsedPowerShellWindows ? "PowerShell window" : "Windows Terminal tab";
         int n = r.OpenedItems.Count;
         var opened = n == 0 ? "Nothing opened" : $"Opened {n} {where}{(n == 1 ? "" : "s")}";
-        var status = opened + (r.Skipped.Count > 0 ? $" · skipped {r.Skipped.Count}" : "");
-        _currentStatus = _recentStatus = _snapshotStatus = status;
-        UpdateStatus();
+        SetAllStatus(opened + (r.Skipped.Count > 0 ? $" \u00B7 skipped {r.Skipped.Count}" : ""));
+
+        // One session that couldn't be opened: say exactly why.
+        if (single && n == 0 && r.Error == null && r.Skipped.Count == 1)
+        {
+            MessageBox.Show(this, "Couldn't open " + r.Skipped[0] + ".", "SessionKeeper", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
 
         var lines = new List<string>();
         if (r.Error != null) lines.Add("Error: " + r.Error);
-        if (r.Skipped.Count > 0) lines.Add("Skipped:\n" + string.Join("\n", r.Skipped.Select(s => "  • " + s)));
-        if (r.ClaudeNotFound && n > 0) lines.Add("Note: claude.exe was not found in the usual places, so the tabs run \"claude\" from PATH.");
-        if (r.UsedPowerShellWindows && n > 0) lines.Add("Windows Terminal was not found, so separate PowerShell windows were used.");
+        if (r.Skipped.Count > 0) lines.Add("Skipped:\n" + string.Join("\n", r.Skipped.Select(s => "  \u2022 " + s)));
+        if (r.ClaudeNotFound && n > 0) lines.Add("Note: claude.exe was not found in the usual places, so \"claude\" is run from PATH.");
+        if (r.TerminalMissing && n > 0) lines.Add("Windows Terminal isn't installed, so PowerShell windows were used instead.");
         if (lines.Count > 0)
             MessageBox.Show(this, opened + ".\n\n" + string.Join("\n\n", lines), "SessionKeeper", MessageBoxButton.OK,
                 r.Error != null ? MessageBoxImage.Warning : MessageBoxImage.Information);
+    }
+
+    // ============================================================ open one row
+
+    private async void Open_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is FrameworkElement { DataContext: { } row }) await OpenRowAsync(row);
+    }
+
+    /// <summary>Double-click on a row = its Open button (but not when double-clicking its checkbox or button).</summary>
+    private async void Row_DoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left || IsInside<System.Windows.Controls.Primitives.ButtonBase>(e.OriginalSource as DependencyObject))
+            return;
+        if (sender is System.Windows.Controls.ListBoxItem { DataContext: { } row })
+        {
+            e.Handled = true;
+            await OpenRowAsync(row);
+        }
+    }
+
+    /// <summary>Enter opens the selected row; Space ticks it on the Recent tab.</summary>
+    private async void SessionList_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.ListBox list || list.SelectedItem is not { } row) return;
+        if (e.Key == Key.Space && row is RecentRow recent)
+        {
+            recent.IsChecked = !recent.IsChecked;
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter && !IsInside<System.Windows.Controls.Primitives.ButtonBase>(e.OriginalSource as DependencyObject))
+        {
+            e.Handled = true;
+            await OpenRowAsync(row);
+        }
+    }
+
+    private async Task OpenRowAsync(object row)
+    {
+        var (item, reason) = row switch
+        {
+            CurrentRow c => (c.ToLaunchItem(), c.OpenTooltip),
+            RecentRow r => (r.ToLaunchItem(), r.OpenTooltip),
+            SnapshotSessionRow s => (s.ToLaunchItem(), s.OpenTooltip),
+            _ => ((LaunchItem?)null, "Can't open this row"),
+        };
+        if (item == null)
+        {
+            MessageBox.Show(this, reason + ".", "SessionKeeper", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        await ReopenAsync(new List<LaunchItem> { item }, LaunchGuard.Open);
+    }
+
+    private static bool IsInside<T>(DependencyObject? d) where T : DependencyObject
+    {
+        for (; d != null; d = d is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+                 ? System.Windows.Media.VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+            if (d is T) return true;
+        return false;
     }
 }

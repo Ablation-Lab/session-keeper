@@ -178,6 +178,41 @@
             </Setter>
         </Style>
 
+        <!-- RadioButton (plain choices; the tab-style ones set their own Style) -->
+        <Style TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource Text}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <StackPanel Orientation="Horizontal" Background="Transparent">
+                            <Grid Width="15" Height="15" VerticalAlignment="Center">
+                                <Ellipse x:Name="ring" Stroke="{StaticResource Faint}" StrokeThickness="1" Fill="{StaticResource Panel}"/>
+                                <Ellipse x:Name="dot" Width="7" Height="7" Fill="{StaticResource Accent}" Visibility="Collapsed"/>
+                            </Grid>
+                            <ContentPresenter Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="ring" Property="Stroke" Value="{StaticResource Accent}"/>
+                                <Setter TargetName="dot" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ring" Property="Stroke" Value="{StaticResource Accent}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="ring" Property="Stroke" Value="{StaticResource Text}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- TextBox -->
         <Style TargetType="TextBox">
             <Setter Property="Foreground" Value="{StaticResource Text}"/>

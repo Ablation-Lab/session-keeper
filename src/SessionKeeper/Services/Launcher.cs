@@ -14,6 +14,8 @@ public sealed class LaunchResult
     public List<string> Skipped { get; } = new();
     public string? Error { get; set; }
     public bool UsedPowerShellWindows { get; set; }
+    /// <summary>Windows Terminal tabs were asked for but Terminal isn't installed, so PowerShell windows were used.</summary>
+    public bool TerminalMissing { get; set; }
     public bool ClaudeNotFound { get; set; }
 }
 
@@ -33,6 +35,13 @@ public static class Launcher
 
     public static string PowerShellPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
+
+    /// <summary>
+    /// The classic console host. Starting PowerShell through it gives a real PowerShell window even when
+    /// Windows' default terminal is set to Windows Terminal (which would otherwise take over new consoles).
+    /// </summary>
+    public static string ConhostPath =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "conhost.exe");
 
     public static string? FindWindowsTerminal()
     {
@@ -76,7 +85,7 @@ public static class Launcher
         return null;
     }
 
-    public static LaunchResult Launch(IReadOnlyList<LaunchItem> items)
+    public static LaunchResult Launch(IReadOnlyList<LaunchItem> items, OpenMode mode = OpenMode.PowerShellWindow)
     {
         var result = new LaunchResult();
         var claude = FindClaude();
@@ -97,7 +106,8 @@ public static class Launcher
         if (valid.Count == 0) return result;
 
         var configDir = ClaudePaths.CustomConfigDir;
-        var wt = FindWindowsTerminal();
+        var wt = mode == OpenMode.WindowsTerminalTab ? FindWindowsTerminal() : null;
+        result.TerminalMissing = mode == OpenMode.WindowsTerminalTab && wt == null;
         try
         {
             if (wt != null) LaunchInWindowsTerminal(wt, valid, claude, configDir, result);
@@ -280,15 +290,24 @@ public static class Launcher
 
     private static void LaunchInPowerShellWindow(LaunchItem it, string claude, string? configDir)
     {
-        var psi = new ProcessStartInfo(PowerShellPath, "-NoLogo -NoExit -EncodedCommand " + Encode(BuildScript(it, claude, configDir)))
+        var psi = BuildPowerShellWindowStart(it, claude, configDir);
+        CleanEnvironment(psi);
+        using (LaunchGuard.Start(psi, $"PowerShell window: {it.Label}")) { }
+    }
+
+    /// <summary>
+    /// conhost.exe "…\powershell.exe" -NoLogo -NoExit -EncodedCommand &lt;base64&gt;
+    /// The only text on this command line is two fixed system paths and base64, so nothing from the folder
+    /// name or session can be parsed as a command; the folder reaches the script as a quoted literal and
+    /// is also the process's working directory.
+    /// </summary>
+    public static ProcessStartInfo BuildPowerShellWindowStart(LaunchItem it, string claude, string? configDir = null) =>
+        new(ConhostPath, WinQuote(PowerShellPath) + " -NoLogo -NoExit -EncodedCommand " + Encode(BuildScript(it, claude, configDir)))
         {
             UseShellExecute = false,
             CreateNoWindow = false,
             WorkingDirectory = it.ProjectDir,
         };
-        CleanEnvironment(psi);
-        using (LaunchGuard.Start(psi, $"PowerShell window: {it.Label}")) { }
-    }
 
     /// <summary>
     /// Variables Claude Code sets for its own child processes. If SessionKeeper was started from inside a

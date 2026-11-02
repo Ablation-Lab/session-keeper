@@ -35,6 +35,10 @@ Snapshots stay in `%APPDATA%\SessionKeeper` until you delete them.
 
 Open Settings with the gear button at the top right.
 
+- **Open sessions in** applies to Open, Reopen selected and Restore. It's saved in `%APPDATA%\SessionKeeper\settings.json`.
+  - **PowerShell window** (the default) starts a separate Windows PowerShell window through `conhost.exe`. That keeps it a real PowerShell window even when Windows' default terminal is set to Windows Terminal.
+  - **Windows Terminal tab** opens a tab in a Windows Terminal window. If Terminal isn't installed, PowerShell windows are used and you're told.
+
 - **Start with Windows** (off by default) adds a per-user entry under `HKCU\…\CurrentVersion\Run`. At sign-in the app starts in the system tray, and it doesn't scan anything until you open it. Click the tray icon to open it; right-click for Exit.
 - **Start menu shortcut** adds or removes `SessionKeeper.lnk` in your own Start menu folder.
 
@@ -91,6 +95,12 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
 
 Hover over a row to see the full path, session ID, and first and last messages.
 
+**Open:** every row in all three views has an **Open** button. Double-clicking the row, or pressing Enter, does the same. It opens the session in its project folder and runs `claude --resume <session-id>`.
+- **Already running:** if the session is already running, you're asked before a second copy opens, because two windows writing to one conversation can mix up its history.
+- **Folder gone:** if the folder no longer exists, nothing opens and you're told why.
+- **No messages yet:** a running session with no messages has nothing to resume, so its Open button is disabled.
+- **Snapshot entries without an ID:** these open a new Claude Code session in that folder.
+
 ## How it works
 
 | What | Where it comes from |
@@ -107,7 +117,7 @@ Hover over a row to see the full path, session ID, and first and last messages.
 ## Safety
 
 - **Launches only on request.**
-  - Every process SessionKeeper starts goes through one gatekeeper (`LaunchGuard`), which refuses anything outside an explicit click on **Reopen**, **Restore** or **Open folder**.
+  - Every process SessionKeeper starts goes through one gatekeeper (`LaunchGuard`), which refuses anything outside an explicit click on **Open**, **Reopen**, **Restore** or **Open folder**.
   - Background work has no such permission, so it can never launch anything. That covers auto-refresh, session detection, the tray and the command line.
   - Shell execution (URIs such as `ms-settings:`, documents, verbs) is refused, and so is `wt.exe` without a `new-tab` command. A test fails if any other code calls `Process.Start`.
 - **Launch log.** Every launch, every refused attempt, each user action, and app start and exit are logged with a timestamp and the calling source line. The logs are in `%APPDATA%\SessionKeeper\logs\launches-yyyy-MM-dd.log` and kept for 14 days. If a window ever opens that you didn't ask for, check the log for that time: no `LAUNCH` line means SessionKeeper didn't open it.

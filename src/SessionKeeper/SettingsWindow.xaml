@@ -6,6 +6,15 @@
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         FocusManager.FocusedElement="{Binding ElementName=CloseButton}">
     <StackPanel Margin="16,14,16,16">
+        <TextBlock Text="Open sessions in" FontWeight="SemiBold"/>
+        <TextBlock Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,2,0,6"
+                   Text="Used by Open, Reopen selected and Restore."/>
+        <RadioButton x:Name="OpenInPowerShell" GroupName="openIn" Content="PowerShell window" Checked="OpenIn_Checked"/>
+        <RadioButton x:Name="OpenInTerminal" GroupName="openIn" Content="Windows Terminal tab" Margin="0,6,0,0" Checked="OpenIn_Checked"/>
+        <TextBlock x:Name="TerminalMissingText" Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="21,3,0,0"
+                   Visibility="Collapsed" Text="Windows Terminal isn't installed."/>
+
+        <Border Height="1" Background="{StaticResource Border}" Margin="0,14,0,12"/>
         <CheckBox x:Name="StartWithWindows" Content="Start with Windows" Checked="StartWithWindows_Changed" Unchecked="StartWithWindows_Changed"/>
         <TextBlock Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="21,3,0,0"
                    Text="Opens in the system tray when you sign in. Click the tray icon to show the window."/>

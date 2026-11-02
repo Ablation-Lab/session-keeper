@@ -18,7 +18,29 @@ public partial class SettingsWindow : Window
         StartWithWindows.IsChecked = _integration.IsStartWithWindowsEnabled;
         StartMenu.IsChecked = _integration.HasStartMenuShortcut;
         UpdateStartupWarning();
+
+        var settings = AppSettings.Load();
+        bool hasTerminal = Launcher.FindWindowsTerminal() != null;
+        OpenInTerminal.IsEnabled = hasTerminal;
+        TerminalMissingText.Visibility = hasTerminal ? Visibility.Collapsed : Visibility.Visible;
+        (settings.OpenIn == OpenMode.WindowsTerminalTab && hasTerminal ? OpenInTerminal : OpenInPowerShell).IsChecked = true;
         _loading = false;
+    }
+
+    private void OpenIn_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        var mode = OpenInTerminal.IsChecked == true ? OpenMode.WindowsTerminalTab : OpenMode.PowerShellWindow;
+        Apply(() =>
+        {
+            var s = AppSettings.Load();
+            s.OpenIn = mode;
+            s.Save();
+        }, () =>
+        {
+            var current = AppSettings.Load().OpenIn;
+            (current == OpenMode.WindowsTerminalTab ? OpenInTerminal : OpenInPowerShell).IsChecked = true;
+        });
     }
 
     protected override void OnSourceInitialized(EventArgs e)
