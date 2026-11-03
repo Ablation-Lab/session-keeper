@@ -1,4 +1,4 @@
-# SessionKeeper
+<img width="826" height="528" alt="sessionkeeper-recent" src="https://github.com/user-attachments/assets/f112b4fd-8ab6-4bfa-92c7-91d302b6fba0" /># SessionKeeper
 
 A small Windows app (C# / .NET 8 WPF) that shows which Claude Code sessions are running, saves them as named snapshots, and reopens them later, each in its own PowerShell window or Windows Terminal tab, resuming the same conversation.
 
@@ -12,6 +12,9 @@ You need Windows 10 or 11 and the [.NET 8 SDK](https://dotnet.microsoft.com/down
 3. If SessionKeeper is already running, you're asked whether to close it. It's closed cleanly, never killed, and the install carries on.
 4. The installer builds the app and installs it for you only, in `%LOCALAPPDATA%\Programs\SessionKeeper`. It also adds a Start menu shortcut and installs the [Claude Code skill](#claude-code-skill).
 5. At the end, you're asked whether to open SessionKeeper. The window then waits for a key press, so you can read what happened, including any error.
+
+<img width="826" height="528" alt="sessionkeeper-recent" src="https://github.com/user-attachments/assets/3bb809f1-d50a-475f-91e8-905927a82292" />
+
 
 **Open it:** Start menu > **SessionKeeper**.
 
