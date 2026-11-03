@@ -1,6 +1,6 @@
 # SessionKeeper
 
-A small Windows app (C# / .NET 8 WPF) that shows which Claude Code sessions are running, saves them as named snapshots, and reopens them later in Windows Terminal tabs, each resuming the same conversation.
+A small Windows app (C# / .NET 8 WPF) that shows which Claude Code sessions are running, saves them as named snapshots, and reopens them later, each in its own PowerShell window or Windows Terminal tab, resuming the same conversation.
 
 ## Install
 
@@ -13,7 +13,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 This does three things:
 1. Builds the app into `%LOCALAPPDATA%\Programs\SessionKeeper`.
 2. Adds a Start menu shortcut.
-3. Installs the Claude Code skill (see below).
+3. Installs the Claude Code skill (see [Claude Code skill](#claude-code-skill)).
 
 Options:
 - `-Destination <folder>` installs somewhere else.
@@ -23,7 +23,7 @@ Options:
 To update, pull and run it again, after closing the app and its tray icon.
 
 **Uninstall:**
-1. In the app's Settings, untick both options.
+1. In the app's Settings, untick **Start with Windows** and **Start menu shortcut**.
 2. Close the app.
 3. Delete `%LOCALAPPDATA%\Programs\SessionKeeper` and `%USERPROFILE%\.claude\skills\session-keeper`.
 
@@ -31,41 +31,118 @@ Snapshots stay in `%APPDATA%\SessionKeeper` until you delete them.
 
 **Developing:** run `dotnet build`, then `dotnet test`. The app is at `src\SessionKeeper\bin\Debug\net8.0-windows\win-x64\SessionKeeper.exe`.
 
-## Version and updates
+## Using SessionKeeper
 
-The bottom bar shows the version, build commit and build date, for example `v1.0.0 · build a1b2c3d · 3 Nov 2026`. `SessionKeeper.exe --version` prints the same. A `+` after the commit means the build had uncommitted changes.
+Open **SessionKeeper** from the Start menu. The window has three tabs at the top, **Current**, **Recent** and **Snapshots**, and a gear button at the top right for Settings. Hover over any row to see its full folder path and the first 8 characters of its session ID. The tooltip also shows the last message on Current rows, and the first and last messages on Recent rows.
 
-- **Where it comes from:** the version is set in one place, `<Version>` in `src/SessionKeeper/SessionKeeper.csproj`. Bump it with each change: patch for fixes, minor for features, major for breaking changes. The commit, build date and source repository are embedded automatically when you build.
-- **Update check:** once at startup, in the background, the app compares its build commit with `HEAD` of the repository it was built from. You can set a different repository as `sourceRepo` in `%APPDATA%\SessionKeeper\settings.json`.
-  - Only commits that touch `src/SessionKeeper` count.
-  - If there are any, the line turns red with **update available**, and the tooltip says how many.
-  - The check only reads (`git rev-list` and `git rev-parse` with optional locks off, hidden, short timeouts, logged). It never pulls, builds or installs.
-  - If the repository or git can't be found, the line stays grey.
-  - To update, run `install.ps1` in the repository.
-- **.NET runtime:** the line also shows the .NET runtime the app is actually running on, for example `Runs on .NET 8.0.33`, with its own colour and tooltip. The tooltip shows:
-  - **Running on:** framework-dependent, or self-contained (bundled with the app).
-  - **Installed on this PC:** every .NET and Windows Desktop runtime found in the dotnet install folders. No `dotnet.exe` is run.
-  - **Latest patch and support status.** For a self-contained copy, it also says that updating .NET means rebuilding the app.
-  - Once a day, in the background, it's checked against Microsoft's official release metadata (`releases-index.json` and the channel's `releases.json`). The check uses HTTPS and Microsoft's hosts only, with a short timeout, and the result is cached for 24 hours in `%APPDATA%\SessionKeeper\cache`.
-  - It turns red if a newer .NET patch is out (the tooltip names it and says whether it has security fixes) or if that .NET version is out of support. The tooltip also warns when support is ending within 30 days.
-  - If you're offline, it stays grey. It never installs or updates anything.
+### Current tab: what's running now
 
-## Settings
+1. Open the **Current** tab. It's the one shown when the app starts.
+2. Read each row:
+   - **Bold label:** the session's title. If the title is missing or generic (such as "Continuing previous session"), the folder name is shown instead.
+   - **Grey text on the right:** the project folder. Hover over it for the full path.
+   - **Second line:** the last message you sent in that session.
+   - **Right-hand side:** how long ago the session was active, and its status: *working*, *needs input* (waiting for you, for example at a permission prompt), *idle*, *starting* (just launched) or *unmatched*.
+3. An *unmatched* row is a `claude` process that isn't in Claude Code's session registry, for example one sitting at the "trust this folder" prompt. It's shown so nothing is hidden, but it has no session ID, so it can't be opened or saved as a resumable session.
+4. The list refreshes itself every 10 seconds while this tab is showing and the window isn't minimised. Click **Refresh** to update it straight away. The summary at the top right, such as "6 running · 1 working", shows when it last updated.
+5. To open a session from here, see [Opening a session](#opening-a-session). Every session on this tab is already running, so you'll always be asked before a second copy opens.
 
-Open Settings with the gear button at the top right.
+### Opening a session
 
-- **Open sessions in** applies to Open, Reopen selected and Restore. It's saved in `%APPDATA%\SessionKeeper\settings.json`.
-  - **PowerShell window** (the default) starts a separate Windows PowerShell window through `conhost.exe`. That keeps it a real PowerShell window even when Windows' default terminal is set to Windows Terminal.
-  - **Windows Terminal tab** opens a tab in a Windows Terminal window. If Terminal isn't installed, PowerShell windows are used and you're told.
+The same steps work on the Current, Recent and Snapshots tabs.
 
-- **Start with Windows** (off by default) adds a per-user entry under `HKCU\…\CurrentVersion\Run`. At sign-in the app starts in the system tray, and it doesn't scan anything until you open it. Click the tray icon to open it; right-click for Exit.
-- **Start menu shortcut** adds or removes `SessionKeeper.lnk` in your own Start menu folder.
+1. Find the session's row.
+2. Click **Open** on the right of the row, double-click the row, or select it and press Enter.
+3. If the session is already running, a **Session already running** box asks whether to open a second copy. The answer defaults to **No**, because two windows writing to one conversation can mix up its history.
+4. The session opens in its project folder and runs `claude --resume <session-id>`, so you're back in the same conversation. It opens as a PowerShell window or a Windows Terminal tab, depending on [Settings](#settings).
 
-Both settings point at the copy of the app you set them from. If you move it, untick and tick them again.
+When nothing opens, a message says why. The cases are:
+- The folder no longer exists.
+- The conversation file has gone.
+- A Current-tab session has no messages yet (its **Open** button is greyed out; hover over it to see why).
+
+A snapshot entry saved without a session ID opens a new Claude Code session in that folder.
+
+### Recent tab: reopen past sessions
+
+1. Open the **Recent** tab. It lists sessions from Claude Code's session files, newest first, including ones that are no longer running.
+2. Next to **Window:**, choose how far back to look: **24 hours**, **3 days**, **7 days** or **30 days**.
+3. Tick the sessions you want. You can also select a row and press Space, or click **Select all from today**, which ticks today's sessions and unticks the rest. **Clear** unticks everything.
+4. Click **Reopen selected (n)**. Each ticked session opens as in [Opening a session](#opening-a-session).
+   - If some are already running (they have a green **running** badge), you're asked whether to skip them. **Yes** skips them, which is recommended. **No** opens second copies, and **Cancel** opens nothing.
+   - If more than 10 would open, you're asked to confirm first.
+5. To keep this selection for later instead, click **Save selected as snapshot…** (see below).
+
+Each row shows the last-active time and the first 8 characters of its session ID, so sessions with the same title can be told apart.
+
+### Snapshots: save and restore a set of sessions
+
+**Save a snapshot**
+1. On the **Current** tab, click **Save these as snapshot…**. The **Save snapshot** dialog opens.
+2. Running sessions are already ticked, apart from *unmatched* or *starting* ones, which have no session ID to resume. Sessions that were active in the last 24 hours but aren't running are listed too, unticked. Untick anything you don't want, or use **All** and **None**.
+3. Check the **Name**. It starts as the date and time, such as "Snapshot Tue 3 Nov 18:40".
+4. Optionally, add a **Note** for the whole snapshot, and a note under any ticked session, such as "waiting on council results".
+5. Click **Save snapshot**. The app switches to the Snapshots tab and selects the new snapshot.
+
+You can also save from the **Recent** tab: tick sessions, then click **Save selected as snapshot…**. On the **Snapshots** tab, **Save snapshot…** opens the same dialog as on the Current tab.
+
+**What gets saved**
+- For each session: its session ID, project folder, title, last message, last-active time and your note.
+- For the snapshot: its name, when it was saved and its note.
+- One readable JSON file per snapshot, in `%APPDATA%\SessionKeeper\snapshots\`, named like `2026-11-03_184000_end-of-day.json`. On the Snapshots tab, **Open folder** opens this folder.
+- A running session with no messages yet is saved without a session ID. Restoring it starts a new session in that folder.
+
+**Restore a snapshot**
+1. Open the **Snapshots** tab.
+2. Click a snapshot in the list on the left. The right side shows its sessions and notes. A green **running** badge marks sessions that are open right now, and a red **folder missing** badge marks folders that no longer exist.
+3. Click **Restore**.
+4. Each session opens in its own PowerShell window, or as a tab in one new Windows Terminal window, depending on [Settings](#settings). Each resumes the same Claude Code conversation. As with **Reopen selected**:
+   - You're asked whether to skip sessions that are already running.
+   - You're asked to confirm if more than 10 would open.
+5. If any entries were skipped, for example because their folder no longer exists or their conversation file has gone, a message lists them and the reason.
+
+You can also open a single session from a snapshot with its **Open** button.
+
+**Manage snapshots**
+- **Rename:** select a snapshot, click **Rename…**, type the new name and click **OK**. The file is renamed to match.
+- **Delete:** select a snapshot, click **Delete** and confirm. The file goes to the Recycle Bin, and Claude Code's own sessions aren't affected.
+- **Missing folders:** if a session's folder has been moved or deleted, the snapshot still lists it with a **folder missing** badge, and the header counts the missing folders. **Restore** skips those sessions and says so. The rest of the snapshot still opens.
+
+### Settings
+
+1. Click the gear button at the top right.
+2. Choose how sessions open under **Open sessions in**. This applies to **Open**, **Reopen selected** and **Restore**.
+   - **PowerShell window** (the default): each session opens in its own Windows PowerShell window.
+   - **Windows Terminal tab:** sessions open as tabs in a Windows Terminal window. This option is greyed out if Terminal isn't installed.
+3. Optionally, tick **Start with Windows**. SessionKeeper then starts in the system tray when you sign in. Click the tray icon to open it, or right-click it and choose **Exit**. It's off by default.
+4. Optionally, tick **Start menu shortcut** to add SessionKeeper to your Start menu. `install.ps1` already does this.
+5. Click **Close**. Changes take effect immediately, so there's no Save button.
+
+**Running from** shows which copy of the app you're using. **Start with Windows** and **Start menu shortcut** point at that copy. If it says Start with Windows "currently starts a different copy", untick and tick the box to point it at this one.
 
 Starting SessionKeeper while it's already open brings the existing window forward, including from the tray.
 
-## Command line
+### Reading the version footer
+
+The bottom of the **Current** tab shows a line like this:
+
+`Auto-refreshes every 10 s · v1.2.1 · build efdb1f5 · 3 Nov 2026 · Runs on .NET 8.0.33`
+
+- **App part** (`v1.2.1 · build efdb1f5 · 3 Nov 2026`): the app's version, the commit it was built from, and the build date. A `+` after the commit means the build had uncommitted changes.
+  - **Grey:** up to date, or the check couldn't run.
+  - **Red with "update available":** the source repository has newer commits to the app. Hover to see how many. To update, run `install.ps1` in the repository.
+- **Runtime part** (`Runs on .NET 8.0.33`): the .NET version the app is actually running on. Hover for details:
+  - **Running on:** the version, and whether the app uses the PC's shared .NET (*framework-dependent*) or carries its own (*self-contained*).
+  - **Installed on this PC:** every .NET and Windows Desktop runtime found on the machine.
+  - **Latest patch and support:** the newest patch for that .NET version, and when Microsoft's support for it ends.
+  - **Grey:** up to date, or the check couldn't run (for example, offline).
+  - **Red:** Microsoft has released a newer patch for this .NET version (the tooltip names it and says whether it has security fixes), or this .NET version is out of support. For a self-contained copy, updating means rebuilding SessionKeeper, not installing a new runtime.
+
+Each part has its own colour, so you can tell which one is out of date. Both checks run once at startup in the background and never slow down opening the app.
+
+## Reference
+
+### Command line
 
 The same exe has command-line options. It never opens the window when you use them:
 
@@ -83,7 +160,7 @@ SessionKeeper.exe --help | --version
 - PowerShell doesn't wait for GUI apps, so pipe the output: `SessionKeeper.exe --list | Out-Host`.
 - `SESSIONKEEPER_SNAPSHOTS` sets a different snapshots folder.
 
-## Claude Code skill
+### Claude Code skill
 
 `skills/session-keeper/` lets you ask Claude Code things like:
 - "open SessionKeeper"
@@ -96,7 +173,7 @@ It runs the command-line options above through `sessionkeeper.ps1`, which finds 
 2. `%LOCALAPPDATA%\Programs\SessionKeeper\SessionKeeper.exe`.
 3. `PATH`.
 
-Restoring sessions stays in the app, because that opens terminal tabs.
+Restoring sessions stays in the app, because that opens new windows.
 
 `install.ps1` installs the skill for you. To install it by hand, copy the folder:
 
@@ -106,21 +183,20 @@ Copy-Item -Recurse -Force skills\session-keeper "$env:USERPROFILE\.claude\skills
 
 Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. Then start a new Claude Code session so it picks the skill up.
 
-## The three tabs
+### Version and update checks
 
-- **Current** lists Claude Code sessions running right now. Each row shows the folder, the title and last message, how long ago it was active, and a status: *working*, *needs input*, *idle*, *starting* or *unmatched*. The list refreshes every 10 s, but only while the tab is visible and the window isn't minimised. **Save these as snapshot…** opens the save dialog with every running session ticked.
-- **Recent** lists sessions from the session files, newest first, for the last 24 h, 3, 7 or 30 days. Tick rows (or use **Select all from today**), then **Reopen selected** or **Save selected as snapshot…**.
-- **Snapshots** lists saved snapshots. Select one to see its sessions and notes. **Restore** reopens them all. You can also rename or delete snapshots (deleted files go to the Recycle Bin).
+- **Version:** the version is set in one place, `<Version>` in `src/SessionKeeper/SessionKeeper.csproj`. Bump it with each change: patch for fixes, minor for features, major for breaking changes. The commit, build date and source repository are embedded automatically when you build. `SessionKeeper.exe --version` prints the same line as the footer.
+- **App check:** compares the build commit with `HEAD` of the repository the app was built from. You can set a different repository as `sourceRepo` in `%APPDATA%\SessionKeeper\settings.json`. Only commits that touch `src/SessionKeeper` count. It runs only `git rev-list` and `git rev-parse`, with optional locks off, hidden, with short timeouts, and logged. It never pulls, builds or installs.
+- **Runtime check:**
+  - The installed runtimes are read from the dotnet install folders and the registered install location. No `dotnet.exe` is run.
+  - The latest-patch and support information comes from Microsoft's official release metadata (`releases-index.json`, then the channel's `releases.json`). It uses HTTPS and Microsoft's hosts only, with a short timeout, and is cached for 24 hours in `%APPDATA%\SessionKeeper\cache`.
+  - The tooltip warns when support ends within 30 days. Nothing is ever installed or updated.
 
-Hover over a row to see the full path, session ID, and first and last messages.
+### Settings file
 
-**Open:** every row in all three views has an **Open** button. Double-clicking the row, or pressing Enter, does the same. It opens the session in its project folder and runs `claude --resume <session-id>`.
-- **Already running:** if the session is already running, you're asked before a second copy opens, because two windows writing to one conversation can mix up its history.
-- **Folder gone:** if the folder no longer exists, nothing opens and you're told why.
-- **No messages yet:** a running session with no messages has nothing to resume, so its Open button is disabled.
-- **Snapshot entries without an ID:** these open a new Claude Code session in that folder.
+`%APPDATA%\SessionKeeper\settings.json` stores **Open sessions in** and the optional `sourceRepo`. Start with Windows is a per-user entry under `HKCU\…\CurrentVersion\Run`, and the Start menu shortcut is `SessionKeeper.lnk` in your own Start menu folder. Neither is stored in the settings file.
 
-## How it works
+### How it works
 
 | What | Where it comes from |
 |---|---|
@@ -128,31 +204,30 @@ Hover over a row to see the full path, session ID, and first and last messages.
 | Unregistered processes | `claude.exe` processes with no registry entry are still shown as *unmatched*, with their folder read from the process when Windows allows it. Elevated processes show "folder unknown". |
 | Session details | `%USERPROFILE%\.claude\projects\<encoded-folder>\<sessionId>.jsonl`. The app reads the `cwd`, `timestamp`, user messages, and the `ai-title`, `custom-title` and `last-prompt` records. Files are append-only, so each one is parsed incrementally and cached. For a transcript over 8 MB, the first look reads only the first 256 KB and the last 1 MB. |
 | Folder checks | Done off the UI thread and cached, so an offline network drive can't freeze the window. |
-| Reopen | `wt -w <name> new-tab -d <folder> powershell -NoExit -EncodedCommand …`, which runs `claude --resume <id>` in that folder. If Windows Terminal isn't installed, separate PowerShell windows are used. |
+| Opening sessions | **PowerShell window:** `conhost.exe powershell -NoExit -EncodedCommand …`. Starting through conhost keeps it a real PowerShell window even when Windows' default terminal is Windows Terminal. **Windows Terminal tab:** `wt -w <name> new-tab -d <folder> powershell -NoExit -EncodedCommand …`. Both run `claude --resume <id>` in the session's folder. |
 | Snapshots | Readable JSON in `%APPDATA%\SessionKeeper\snapshots\`, with an optional note for the whole snapshot and per-session notes. |
 
 `CLAUDE_CONFIG_DIR` is respected if set.
 
-## Safety
+### Safety
 
 - **Launches only on request.**
-  - Every process SessionKeeper starts goes through one gatekeeper (`LaunchGuard`), which refuses anything outside an explicit click on **Open**, **Reopen**, **Restore** or **Open folder**.
+  - Every process SessionKeeper starts goes through one gatekeeper (`LaunchGuard`), which refuses anything outside an explicit click on **Open**, **Reopen selected**, **Restore** or **Open folder**.
   - Background work has no such permission, so it can never launch anything. That covers auto-refresh, session detection, the tray and the command line.
   - Shell execution (URIs such as `ms-settings:`, documents, verbs) is refused, and so is `wt.exe` without a `new-tab` command. A test fails if any other code calls `Process.Start`.
+  - The only background process is the read-only `git` query described above, run under the same rules.
 - **Launch log.** Every launch, every refused attempt, each user action, and app start and exit are logged with a timestamp and the calling source line. The logs are in `%APPDATA%\SessionKeeper\logs\launches-yyyy-MM-dd.log` and kept for 14 days. If a window ever opens that you didn't ask for, check the log for that time: no `LAUNCH` line means SessionKeeper didn't open it.
 - **Read-only towards Claude Code.** Session files and registry entries are opened read-only with full sharing. Processes are opened with query/read rights only. Nothing is ever written to, deleted from or killed in Claude Code's files or processes.
-- **No command injection.** Folder names, titles and notes are never parsed as commands. Each tab runs a base64 `-EncodedCommand` script. Its only dynamic values are single-quoted PowerShell literals, with every quote character doubled (including Unicode ‘ ’ quotes), and a session ID that must parse as a GUID. Tab titles are reduced to letters, digits and `-_.() `. A folder containing `;` or `%` is not passed to `-d` at all, because wt splits on `;` and expands `%VAR%`. Notes are never passed to any process.
+- **No command injection.** Folder names, titles and notes are never parsed as commands. Each window or tab runs a base64 `-EncodedCommand` script. Its only dynamic values are single-quoted PowerShell literals, with every quote character doubled (including Unicode ‘ ’ quotes), and a session ID that must parse as a GUID. Tab titles are reduced to letters, digits and `-_.() `. A folder containing `;` or `%` is not passed to `-d` at all, because wt splits on `;` and expands `%VAR%`. Notes are never passed to any process.
 - **The right folder, the right claude.**
   - If the script can't enter the folder, it stops instead of starting claude somewhere else.
   - `claude` is resolved to a full path, and relative `PATH` entries are ignored, so a repository can't plant its own `claude.cmd`.
-  - `NoDefaultCurrentDirectoryInExePath` is set in each tab, so npm's `claude.cmd` shim can't pick up a `node.exe` from the project folder.
+  - `NoDefaultCurrentDirectoryInExePath` is set in each window, so npm's `claude.cmd` shim can't pick up a `node.exe` from the project folder.
   - A conversation is only resumed in the folder it belongs to.
-- **Before reopening:** missing folders are skipped and listed. Sessions whose conversation file has gone are skipped. Sessions that are already running trigger a prompt, because opening one twice means two terminals writing to the same conversation.
 - If SessionKeeper itself was started from inside a Claude Code session, the `CLAUDE*` variables it inherited are removed before launching. Otherwise the new `claude` wouldn't start normally.
 
-## Limits
+### Limits
 
 - Claude Code's registry and file formats are internal and could change in a future version. If they do, the Current tab falls back to listing *unmatched* processes.
-- A session with no messages yet has no conversation file. Saving it records "start a fresh claude in this folder".
 - Node-based installs (`node.exe … claude-code`) are matched through the registry only. They won't appear as *unmatched* when unregistered.
-- `claude.exe` is found in `%USERPROFILE%\.local\bin`, then on `PATH`, then as npm's `claude.cmd`. If none of these exist, the tabs run `claude` and rely on `PATH`.
+- `claude.exe` is found in `%USERPROFILE%\.local\bin`, then on `PATH`, then as npm's `claude.cmd`. If none of these exist, the windows run `claude` and rely on `PATH`.
