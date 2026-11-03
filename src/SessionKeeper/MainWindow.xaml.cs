@@ -14,8 +14,6 @@ namespace SessionKeeper;
 
 public partial class MainWindow : Window
 {
-    private static readonly TimeSpan RecentlyLaunchedWindow = TimeSpan.FromSeconds(90);
-
     private readonly SessionStore _store = new();
     private readonly RunningScanner _scanner = new();
     private readonly SnapshotStore _snapshots = new();
@@ -23,8 +21,9 @@ public partial class MainWindow : Window
 
     private readonly ObservableCollection<CurrentRow> _currentRows = new();
     private HashSet<string> _runningIds = new(StringComparer.OrdinalIgnoreCase);
-    /// <summary>Sessions we launched recently: they may not have registered yet, so treat them as running.</summary>
-    private readonly Dictionary<string, DateTime> _recentlyLaunched = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Sessions we just opened count as running until they register (see <see cref="LaunchGrace"/>).</summary>
+    private readonly LaunchGrace _launchGrace = new();
+    private bool _badgeRefreshBusy;
     private List<RecentRow> _recentRows = new();
     private Task? _currentRefresh;
     private bool _recentLoaded, _launching;
@@ -49,8 +48,9 @@ public partial class MainWindow : Window
         };
         Activated += async (_, _) =>
         {
-            if (TabCurrent.IsChecked == true && DateTime.UtcNow - _lastCurrentRefresh > TimeSpan.FromSeconds(3))
-                await RefreshCurrentAsync();
+            if (DateTime.UtcNow - _lastCurrentRefresh <= TimeSpan.FromSeconds(3)) return;
+            if (TabCurrent.IsChecked == true) await RefreshCurrentAsync();
+            else await RefreshRunningBadgesAsync();
         };
         Closed += (_, _) => { _timer.Stop(); _recentCts?.Cancel(); };
     }
@@ -73,6 +73,7 @@ public partial class MainWindow : Window
 
         if (cur) _ = RefreshCurrentAsync();
         if (rec && !_recentLoaded) _ = LoadRecentAsync();
+        else if (rec) _ = RefreshRunningBadgesAsync();
         if (snap) _ = LoadSnapshotsAsync(refreshRunning: true);
         UpdateStatus();
     }
@@ -155,18 +156,8 @@ public partial class MainWindow : Window
             : _snapshotStatus;
     }
 
-    /// <summary>Running session ids from a fresh scan, plus sessions we launched in the last 90 s.</summary>
-    private HashSet<string> WithRecentlyLaunched(IEnumerable<string> running)
-    {
-        var set = new HashSet<string>(running, StringComparer.OrdinalIgnoreCase);
-        var now = DateTime.UtcNow;
-        foreach (var (id, at) in _recentlyLaunched.ToList())
-        {
-            if (now - at > RecentlyLaunchedWindow) _recentlyLaunched.Remove(id);
-            else set.Add(id);
-        }
-        return set;
-    }
+    /// <summary>Running session ids from a scan, plus sessions we just opened that haven't registered yet.</summary>
+    private HashSet<string> WithRecentlyLaunched(IEnumerable<string> running) => _launchGrace.Apply(running);
 
     private async Task<HashSet<string>> ScanRunningIdsAsync()
     {
@@ -178,9 +169,38 @@ public partial class MainWindow : Window
 
     private async Task AutoRefreshAsync()
     {
-        // Only scan while the user can actually see the list.
-        if (TabCurrent.IsChecked != true || WindowState == WindowState.Minimized || !IsVisible) return;
-        await RefreshCurrentAsync();
+        // Only scan while the user can actually see the window.
+        if (WindowState == WindowState.Minimized || !IsVisible) return;
+        if (TabCurrent.IsChecked == true) await RefreshCurrentAsync();
+        else await RefreshRunningBadgesAsync(); // Recent / Snapshots: keep the "running" badges current
+    }
+
+    /// <summary>
+    /// Re-checks which sessions are running and updates the "running" badges on the Recent tab and in the
+    /// selected snapshot in place (no list reload, so selection, ticks and scroll position stay). Read-only.
+    /// </summary>
+    private async Task RefreshRunningBadgesAsync()
+    {
+        if (_badgeRefreshBusy) return;
+        _badgeRefreshBusy = true;
+        using var noLaunches = LaunchGuard.Background();
+        try
+        {
+            var running = await ScanRunningIdsAsync();
+            _runningIds = running;
+            foreach (var row in _recentRows) row.IsRunning = running.Contains(row.Info.SessionId);
+            if (SnapshotSessions.ItemsSource is IEnumerable<SnapshotSessionRow> snapRows)
+                foreach (var row in snapRows) row.IsRunning = row.Session.SessionId != null && running.Contains(row.Session.SessionId);
+            _lastCurrentRefresh = DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+        }
+        finally
+        {
+            _badgeRefreshBusy = false;
+        }
     }
 
     /// <summary>Starts a refresh, or returns the one already in flight so callers always await fresh rows.</summary>
@@ -672,7 +692,7 @@ public partial class MainWindow : Window
             }
             else result = new LaunchResult();
             foreach (var it in result.OpenedItems.Where(r => r.SessionId != null))
-                _recentlyLaunched[it.SessionId!] = DateTime.UtcNow;
+                _launchGrace.Launched(it.SessionId!);
             result.Skipped.InsertRange(0, preSkipped);
             ReportLaunch(result, single);
 

@@ -199,8 +199,22 @@ public sealed class CurrentRow : Observable
 public sealed class RecentRow : Observable
 {
     private bool _isChecked;
+    private bool _isRunning;
     public required SessionInfo Info { get; init; }
-    public bool IsRunning { get; init; }
+
+    /// <summary>Updated in place by the 10-second refresh, so the badge clears soon after a session closes.</summary>
+    public bool IsRunning
+    {
+        get => _isRunning;
+        set
+        {
+            if (_isRunning == value) return;
+            _isRunning = value;
+            Raise(nameof(IsRunning));
+            Raise(nameof(RunningVisibility));
+            Raise(nameof(Tooltip));
+        }
+    }
 
     public bool IsChecked { get => _isChecked; set => Set(ref _isChecked, value); }
 
@@ -246,10 +260,23 @@ public sealed class SnapshotListItem
         : File.Error ?? "";
 }
 
-public sealed class SnapshotSessionRow
+public sealed class SnapshotSessionRow : Observable
 {
+    private bool _isRunning;
     public required SnapshotSession Session { get; init; }
-    public bool IsRunning { get; init; }
+
+    /// <summary>Updated in place by the 10-second refresh while the Snapshots tab is showing.</summary>
+    public bool IsRunning
+    {
+        get => _isRunning;
+        set
+        {
+            if (_isRunning == value) return;
+            _isRunning = value;
+            Raise(nameof(IsRunning));
+            Raise(nameof(RunningVisibility));
+        }
+    }
     public string FolderName => Fmt.FolderName(Session.ProjectDir);
     /// <summary>Set off the UI thread via <see cref="Services.FolderProbe"/>.</summary>
     public bool FolderMissing { get; init; }
