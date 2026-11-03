@@ -62,7 +62,6 @@ they're needed to tell sessions apart.
 
 ## If SessionKeeper isn't installed (exit code 3)
 
-Tell the user it needs installing. From a clone of the SessionKeeper repository, they run
-`powershell -ExecutionPolicy Bypass -File install.ps1`, which needs the .NET 8 SDK. If it's installed
-somewhere unusual, they can set the `SESSIONKEEPER_EXE` environment variable to the full path of
-`SessionKeeper.exe`.
+Tell the user it needs installing: in a clone of the SessionKeeper repository, they double-click
+`install.cmd` (it needs the .NET 8 SDK and no admin rights). If it's installed somewhere unusual, they can
+set the `SESSIONKEEPER_EXE` environment variable to the full path of `SessionKeeper.exe`.

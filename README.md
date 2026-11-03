@@ -2,34 +2,40 @@
 
 A small Windows app (C# / .NET 8 WPF) that shows which Claude Code sessions are running, saves them as named snapshots, and reopens them later, each in its own PowerShell window or Windows Terminal tab, resuming the same conversation.
 
-## Install
+## Install / Update
 
-You need Windows 10 or 11 and the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). No admin rights are needed. From a clone of this repository:
+You need Windows 10 or 11 and the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). No admin rights are needed.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File install.ps1
-```
+**Install**
+1. Get this repository onto your PC, for example with `git clone`.
+2. In the repository folder, double-click **install.cmd**.
+3. If SessionKeeper is already running, you're asked whether to close it. It's closed cleanly, never killed, and the install carries on.
+4. The installer builds the app and installs it for you only, in `%LOCALAPPDATA%\Programs\SessionKeeper`. It also adds a Start menu shortcut and installs the [Claude Code skill](#claude-code-skill).
+5. At the end, you're asked whether to open SessionKeeper. The window then waits for a key press, so you can read what happened, including any error.
 
-This does three things:
-1. Builds the app into `%LOCALAPPDATA%\Programs\SessionKeeper`.
-2. Adds a Start menu shortcut.
-3. Installs the Claude Code skill (see [Claude Code skill](#claude-code-skill)).
+**Open it:** Start menu > **SessionKeeper**.
 
-Options:
-- `-Destination <folder>` installs somewhere else.
-- `-NoStartMenu` skips the shortcut.
-- `-NoSkill` skips the skill.
+**Start it when you sign in:** in SessionKeeper, click the gear button and tick **Start with Windows**. If Start with Windows already points at a different copy of the app, the installer offers to switch it to the installed one.
 
-To update, pull and run it again, after closing the app and its tray icon.
+**Options:** to use these, run `install.cmd` from a terminal in the repository folder, followed by the switch:
+- `install.cmd -NoSkill` skips the Claude Code skill.
+- `install.cmd -NoStartMenu` skips the Start menu shortcut.
+- `install.cmd -Destination D:\Tools\SessionKeeper` installs to another folder you own. If you also install the skill, set `SESSIONKEEPER_EXE` to that copy's `SessionKeeper.exe` so the skill can find it.
+
+**Update:** pull the latest changes (for example `git pull`), then double-click **install.cmd** again. It offers to close the running copy first. The version footer turns red with **update available** when the repository has newer app changes.
+
+**Please don't:**
+- **Copy the build folder by hand** (`src\SessionKeeper\bin\...`). Every build replaces it, so a copy running from there blocks updates, and the app will tell you it isn't installed.
+- **Install under Program Files.** That needs admin rights and updates would fail, so the installer refuses.
 
 **Uninstall:**
-1. In the app's Settings, untick **Start with Windows** and **Start menu shortcut**.
-2. Close the app.
-3. Delete `%LOCALAPPDATA%\Programs\SessionKeeper` and `%USERPROFILE%\.claude\skills\session-keeper`.
+1. In SessionKeeper's Settings, untick **Start with Windows** and **Start menu shortcut**. This removes the startup entry (under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`) and the shortcut (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\SessionKeeper.lnk`).
+2. Close SessionKeeper: right-click its tray icon and choose **Exit**, or close the window.
+3. Delete the app folder, `%LOCALAPPDATA%\Programs\SessionKeeper`.
+4. Delete the skill folder, `%USERPROFILE%\.claude\skills\session-keeper`.
+5. Optionally, delete `%APPDATA%\SessionKeeper`, which holds your snapshots, settings, logs and cache.
 
-Snapshots stay in `%APPDATA%\SessionKeeper` until you delete them.
-
-**Developing:** run `dotnet build`, then `dotnet test`. The app is at `src\SessionKeeper\bin\Debug\net8.0-windows\win-x64\SessionKeeper.exe`.
+**Developing:** run `dotnet build`, then `dotnet test`. The development build is at `src\SessionKeeper\bin\Debug\net8.0-windows\win-x64\SessionKeeper.exe`. For everyday use, install it with `install.cmd`. You can also run `install.ps1` directly (`powershell -ExecutionPolicy Bypass -File install.ps1`). Without `-Interactive` it doesn't prompt; it stops with a message if SessionKeeper is running.
 
 ## Using SessionKeeper
 
@@ -115,10 +121,12 @@ You can also open a single session from a snapshot with its **Open** button.
    - **PowerShell window** (the default): each session opens in its own Windows PowerShell window.
    - **Windows Terminal tab:** sessions open as tabs in a Windows Terminal window. This option is greyed out if Terminal isn't installed.
 3. Optionally, tick **Start with Windows**. SessionKeeper then starts in the system tray when you sign in. Click the tray icon to open it, or right-click it and choose **Exit**. It's off by default.
-4. Optionally, tick **Start menu shortcut** to add SessionKeeper to your Start menu. `install.ps1` already does this.
+4. Optionally, tick **Start menu shortcut** to add SessionKeeper to your Start menu. The installer already does this.
 5. Click **Close**. Changes take effect immediately, so there's no Save button.
 
 **Running from** shows which copy of the app you're using. **Start with Windows** and **Start menu shortcut** point at that copy. If it says Start with Windows "currently starts a different copy", untick and tick the box to point it at this one.
+
+If you're running a copy that wasn't installed, such as the build folder, Settings shows a **This copy isn't installed** notice at the top. Click **Open repo folder** and double-click **install.cmd** there.
 
 Starting SessionKeeper while it's already open brings the existing window forward, including from the tray.
 
@@ -130,7 +138,7 @@ The bottom of the **Current** tab shows a line like this:
 
 - **App part** (`v1.2.1 · build efdb1f5 · 3 Nov 2026`): the app's version, the commit it was built from, and the build date. A `+` after the commit means the build had uncommitted changes.
   - **Grey:** up to date, or the check couldn't run.
-  - **Red with "update available":** the source repository has newer commits to the app. Hover to see how many. To update, run `install.ps1` in the repository.
+  - **Red with "update available":** the source repository has newer commits to the app. Hover to see how many, and where: "Double-click install.cmd in … to update".
 - **Runtime part** (`Runs on .NET 8.0.33`): the .NET version the app is actually running on. Hover for details:
   - **Running on:** the version, and whether the app uses the PC's shared .NET (*framework-dependent*) or carries its own (*self-contained*).
   - **Installed on this PC:** every .NET and Windows Desktop runtime found on the machine.
@@ -175,7 +183,7 @@ It runs the command-line options above through `sessionkeeper.ps1`, which finds 
 
 Restoring sessions stays in the app, because that opens new windows.
 
-`install.ps1` installs the skill for you. To install it by hand, copy the folder:
+`install.cmd` installs the skill for you. To install it by hand, copy the folder:
 
 ```powershell
 Copy-Item -Recurse -Force skills\session-keeper "$env:USERPROFILE\.claude\skills\"

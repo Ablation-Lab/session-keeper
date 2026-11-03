@@ -57,7 +57,7 @@ public sealed class LocalRepoUpdateSource : IUpdateSource
 
         return n > 0
             ? new UpdateStatus(UpdateState.UpdateAvailable, n,
-                $"{n} newer commit{(n == 1 ? "" : "s")} to the app source in {_repo} (HEAD {headText}). Run install.ps1 there to update.")
+                $"{n} newer commit{(n == 1 ? "" : "s")} to the app source (HEAD {headText}).\nDouble-click install.cmd in {_repo} to update.")
             : new UpdateStatus(UpdateState.UpToDate, 0, $"Up to date with {_repo} (HEAD {headText}).");
     }
 

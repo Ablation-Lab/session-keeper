@@ -13,6 +13,8 @@ public static class Program
     internal const string StartupFlag = "--startup";
     private const string InstanceMutexName = @"Local\SessionKeeper.Instance";
     internal const string ShowEventName = @"Local\SessionKeeper.Show";
+    /// <summary>Set by install.ps1 (after asking the user) to make a running instance exit cleanly.</summary>
+    internal const string ExitEventName = @"Local\SessionKeeper.Exit";
 
     [DllImport("user32.dll")]
     private static extern bool AllowSetForegroundWindow(int processId);

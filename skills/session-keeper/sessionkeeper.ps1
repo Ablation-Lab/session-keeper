@@ -9,7 +9,7 @@
 
   SessionKeeper.exe is looked up in this order:
     1. the SESSIONKEEPER_EXE environment variable (full path to the exe)
-    2. %LOCALAPPDATA%\Programs\SessionKeeper\SessionKeeper.exe (where install.ps1 puts it)
+    2. %LOCALAPPDATA%\Programs\SessionKeeper\SessionKeeper.exe (where install.cmd puts it)
     3. SessionKeeper.exe on PATH
   Exit code 3 means it could not be found.
 #>
@@ -31,7 +31,7 @@ function Find-SessionKeeper {
 
 $exe = Find-SessionKeeper
 if (-not $exe) {
-    [Console]::Error.WriteLine('SessionKeeper.exe was not found. Install it with install.ps1 from the SessionKeeper repository (see its README), or set SESSIONKEEPER_EXE to the full path of SessionKeeper.exe.')
+    [Console]::Error.WriteLine('SessionKeeper.exe was not found. Install it by double-clicking install.cmd in the SessionKeeper repository (see its README), or set SESSIONKEEPER_EXE to the full path of SessionKeeper.exe.')
     exit 3
 }
 

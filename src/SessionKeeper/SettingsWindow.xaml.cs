@@ -24,7 +24,38 @@ public partial class SettingsWindow : Window
         OpenInTerminal.IsEnabled = hasTerminal;
         TerminalMissingText.Visibility = hasTerminal ? Visibility.Collapsed : Visibility.Visible;
         (settings.OpenIn == OpenMode.WindowsTerminalTab && hasTerminal ? OpenInTerminal : OpenInPowerShell).IsChecked = true;
+        ShowInstallNotice(settings);
         _loading = false;
+    }
+
+    private string? _repo;
+
+    /// <summary>Explains when this copy isn't the installed one (for example the build folder), and how to install.</summary>
+    private void ShowInstallNotice(AppSettings settings)
+    {
+        if (InstallLocation.IsInstalledCopy) return;
+        _repo = InstallLocation.SourceRepo(settings, BuildInfo.Current);
+        var folder = System.IO.Path.GetDirectoryName(_exe) ?? _exe;
+        NotInstalledText.Text =
+            $"It's running from {folder}. A build replaces that folder, so updates can fail while it's open, and " +
+            "Start with Windows or the Start menu shortcut shouldn't point here.\n" +
+            (_repo != null
+                ? $"To install it, double-click install.cmd in {_repo}."
+                : "To install it, double-click install.cmd in the SessionKeeper repository folder.");
+        OpenRepoButton.Visibility = _repo != null ? Visibility.Visible : Visibility.Collapsed;
+        NotInstalledNotice.Visibility = Visibility.Visible;
+    }
+
+    private void OpenRepo_Click(object sender, RoutedEventArgs e)
+    {
+        if (_repo == null) return;
+        Apply(() =>
+        {
+            using var action = LaunchGuard.UserAction(LaunchGuard.OpenRepoFolder);
+            var explorer = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
+            using var _ = LaunchGuard.Start(new System.Diagnostics.ProcessStartInfo(explorer, Launcher.WinQuote(_repo)) { UseShellExecute = false },
+                "Explorer: repository folder (install.cmd)");
+        }, () => { });
     }
 
     private void OpenIn_Checked(object sender, RoutedEventArgs e)

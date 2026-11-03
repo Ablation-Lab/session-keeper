@@ -56,24 +56,46 @@ public partial class App : Application
         w.Focus();
     }
 
-    /// <summary>Listens for a second launch asking this instance to show itself.</summary>
+    /// <summary>
+    /// Listens for two signals from other processes in this session: a second launch asking this instance to
+    /// show itself, and the installer asking it to exit cleanly (so it can replace the files). Exiting this
+    /// way runs the normal shutdown: the tray icon is removed and the exit is logged.
+    /// </summary>
     private void StartShowListener()
     {
+        EventWaitHandle exitEvent;
         try
         {
             _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, Program.ShowEventName);
+            exitEvent = new EventWaitHandle(false, EventResetMode.AutoReset, Program.ExitEventName);
         }
         catch (Exception ex)
         {
             Log(ex);
             return;
         }
+        var show = _showEvent;
         _showListener = new Thread(() =>
         {
-            while (_showEvent.WaitOne() && !_exiting)
-                Dispatcher.BeginInvoke(ShowMainWindow);
+            var handles = new WaitHandle[] { show, exitEvent };
+            while (!_exiting)
+            {
+                int which = WaitHandle.WaitAny(handles);
+                if (_exiting) break;
+                if (which == 0) Dispatcher.BeginInvoke(ShowMainWindow);
+                else
+                {
+                    Dispatcher.BeginInvoke(() =>
+                    {
+                        Services.LaunchGuard.LogEvent("APP", "exit requested by the installer");
+                        Shutdown();
+                    });
+                    break;
+                }
+            }
+            exitEvent.Dispose();
         })
-        { IsBackground = true, Name = "SessionKeeper show listener" };
+        { IsBackground = true, Name = "SessionKeeper signal listener" };
         _showListener.Start();
     }
 
