@@ -38,6 +38,21 @@ public sealed class ThemeTests
                     if (wbg != bg || wfg != fg) results.Add($"{w.GetType().Name}: background {wbg}, foreground {wfg}");
                     w.Close();
                 }
+
+                // Clicked controls must not keep an outline: focus is shown only for keyboard focus (FocusVisualStyle),
+                // never by an IsKeyboardFocused template trigger (which also fires after a mouse click).
+                var ring = app.Resources["KeyboardFocusRing"];
+                foreach (var key in new object[] { typeof(System.Windows.Controls.Button), typeof(System.Windows.Controls.CheckBox),
+                                                   typeof(System.Windows.Controls.RadioButton), "TabButton" })
+                {
+                    var style = (Style)app.Resources[key];
+                    var focusStyle = style.Setters.OfType<Setter>().FirstOrDefault(s => s.Property == FrameworkElement.FocusVisualStyleProperty)?.Value;
+                    if (!ReferenceEquals(focusStyle, ring)) results.Add($"{key}: not using the keyboard-only focus ring");
+                    var template = style.Setters.OfType<Setter>().FirstOrDefault(s => s.Property == System.Windows.Controls.Control.TemplateProperty)?.Value
+                        as System.Windows.Controls.ControlTemplate;
+                    if (template?.Triggers.OfType<Trigger>().Any(t => t.Property == UIElement.IsKeyboardFocusedProperty) == true)
+                        results.Add($"{key}: has a sticky IsKeyboardFocused trigger");
+                }
                 app.Shutdown();
             }
             catch (Exception ex)
