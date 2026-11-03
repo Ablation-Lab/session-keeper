@@ -38,10 +38,12 @@ public partial class MainWindow : Window
         InitializeComponent();
         CurrentList.ItemsSource = _currentRows;
         ShowVersion(BuildInfo.Current, null);
+        ShowRuntime(DotNetRuntime.Current, null);
         _timer.Tick += async (_, _) => await AutoRefreshAsync();
         Loaded += async (_, _) =>
         {
             _ = CheckForUpdatesAsync(); // background, once; never delays startup
+            _ = CheckRuntimeAsync();    // likewise, in parallel
             await RefreshCurrentAsync();
             _timer.Start();
         };
@@ -99,17 +101,49 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Checks the running .NET version against Microsoft's release metadata once (cached 24 h), in the
+    /// background. Offline or any failure: the .NET part simply stays grey.
+    /// </summary>
+    private async Task CheckRuntimeAsync()
+    {
+        try
+        {
+            var current = DotNetRuntime.Current;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var status = await Task.Run(() => new DotNetReleaseCheck().CheckAsync(current, cts.Token), cts.Token);
+            ShowRuntime(current, status);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or System.Net.Http.HttpRequestException)
+        {
+            // offline or slow: stay grey
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+        }
+    }
+
+    private void ShowRuntime(Version runtime, RuntimeStatus? status)
+    {
+        bool outdated = status?.Outdated == true;
+        RuntimeRun.Text = " · " + DotNetRuntime.Display(runtime);
+        RuntimeRun.Foreground = (System.Windows.Media.Brush)FindResource(outdated ? "Warn" : "Faint");
+        RuntimeRun.ToolTip = $"Running on {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}" +
+                             (status != null ? "\n" + status.Detail : "");
+    }
+
     private void ShowVersion(BuildInfo build, UpdateStatus? status)
     {
         bool update = status?.State == UpdateState.UpdateAvailable;
-        VersionText.Text = "·  " + build.FooterText + (update ? "  ·  update available" : "");
-        VersionText.Foreground = (System.Windows.Media.Brush)FindResource(update ? "Warn" : "Faint");
+        VersionRun.Text = "  ·  " + build.FooterText + (update ? " · update available" : "");
+        VersionRun.Foreground = (System.Windows.Media.Brush)FindResource(update ? "Warn" : "Faint");
 
         var tip = new List<string> { $"SessionKeeper {build.Version}" };
         if (build.Commit != null) tip.Add("Commit " + build.Commit + (build.SourceDirty ? " (built with uncommitted changes)" : ""));
         if (build.BuildDate is { } d) tip.Add("Built " + d.ToLocalTime().ToString("d MMM yyyy HH:mm"));
         if (status != null) tip.Add(status.Detail);
-        VersionText.ToolTip = string.Join("\n", tip);
+        VersionRun.ToolTip = string.Join("\n", tip);
     }
 
     private void UpdateStatus()
