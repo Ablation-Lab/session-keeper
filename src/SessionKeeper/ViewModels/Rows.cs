@@ -300,9 +300,13 @@ public sealed class SaveCandidate : Observable
     public Visibility NotePlaceholderVisibility => string.IsNullOrEmpty(_note) ? Visibility.Visible : Visibility.Collapsed;
 
     public string FolderName => Fmt.FolderName(ProjectDir);
+    public string MainLabel => Fmt.MainLabel(Title, ProjectDir);
+    public string SecondaryText => Fmt.SecondaryText(Title, ProjectDir);
+    public Visibility SecondaryVisibility => SecondaryText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    // The title is now the main label, so the detail line carries the last message instead.
     public string Detail => (IsRunning ? "running · " : "") + Fmt.When(LastActive) +
                             (SessionId == null ? " · new session" : "") +
-                            (string.IsNullOrEmpty(Title ?? Summary) ? "" : "  —  " + Fmt.Trim(Title ?? Summary, 90));
-    public string Tooltip => ProjectDir + (SessionId != null ? "\nSession: " + SessionId : "") +
-                             (Summary != null ? "\n" + Fmt.Trim(Summary, 300) : "");
+                            (string.IsNullOrEmpty(Summary) ? "" : "  —  " + Fmt.Trim(Summary, 90));
+    public string Tooltip => Fmt.TooltipHeader(Title, ProjectDir, SessionId) +
+                             (Summary != null ? "\nLast message: " + Fmt.Trim(Summary, 300) : "");
 }

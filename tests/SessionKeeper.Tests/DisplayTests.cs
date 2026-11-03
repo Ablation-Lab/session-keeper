@@ -71,4 +71,20 @@ public sealed class DisplayTests
         Assert.Equal("last ask", snap.Summary); // title no longer repeated in the summary line
         Assert.Contains("Session bbbb2222", snap.Tooltip);
     }
+
+    [Fact]
+    public void SaveDialogCandidatesUseTheSameLabels()
+    {
+        var titled = new SaveCandidate { SessionId = Id1, ProjectDir = @"C:\Projects\notes-app", Title = "Fix the login form", Summary = "last ask", LastActive = DateTimeOffset.Now };
+        Assert.Equal("Fix the login form", titled.MainLabel);
+        Assert.Equal("notes-app", titled.SecondaryText);
+        Assert.Contains("last ask", titled.Detail);
+        Assert.DoesNotContain("Fix the login form", titled.Detail); // not repeated
+        Assert.StartsWith("Fix the login form\nSession aaaa1111", titled.Tooltip);
+
+        var generic = new SaveCandidate { SessionId = Id2, ProjectDir = @"C:\Projects\shared-project", Title = "Continuing previous session" };
+        Assert.Equal("shared-project", generic.MainLabel);
+        Assert.Equal(@"C:\Projects\shared-project", generic.SecondaryText);
+        Assert.Contains("Session bbbb2222", generic.Tooltip);
+    }
 }

@@ -61,7 +61,16 @@
                         </Grid.RowDefinitions>
                         <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" VerticalAlignment="Top" Margin="0,2,10,0"/>
                         <StackPanel Grid.Column="1">
-                            <TextBlock Text="{Binding FolderName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding MainLabel}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Grid.Column="1" Text="{Binding SecondaryText}" Style="{StaticResource MutedText}"
+                                           Foreground="{StaticResource Faint}" TextTrimming="CharacterEllipsis" MaxWidth="220" Margin="8,0,0,0"
+                                           Visibility="{Binding SecondaryVisibility}" ToolTip="{Binding ProjectDir}"/>
+                            </Grid>
                             <TextBlock Text="{Binding Detail}" Style="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
                         </StackPanel>
                         <Grid Grid.Row="1" Grid.Column="1" Margin="0,5,0,0">
