@@ -42,7 +42,10 @@ The bottom bar shows the version, build commit and build date, for example `v1.0
   - The check only reads (`git rev-list` and `git rev-parse` with optional locks off, hidden, short timeouts, logged). It never pulls, builds or installs.
   - If the repository or git can't be found, the line stays grey.
   - To update, run `install.ps1` in the repository.
-- **.NET runtime:** the line also shows the .NET runtime the app is actually running on, for example `.NET 8.0.33`, with its own colour and tooltip.
+- **.NET runtime:** the line also shows the .NET runtime the app is actually running on, for example `Runs on .NET 8.0.33`, with its own colour and tooltip. The tooltip shows:
+  - **Running on:** framework-dependent, or self-contained (bundled with the app).
+  - **Installed on this PC:** every .NET and Windows Desktop runtime found in the dotnet install folders. No `dotnet.exe` is run.
+  - **Latest patch and support status.** For a self-contained copy, it also says that updating .NET means rebuilding the app.
   - Once a day, in the background, it's checked against Microsoft's official release metadata (`releases-index.json` and the channel's `releases.json`). The check uses HTTPS and Microsoft's hosts only, with a short timeout, and the result is cached for 24 hours in `%APPDATA%\SessionKeeper\cache`.
   - It turns red if a newer .NET patch is out (the tooltip names it and says whether it has security fixes) or if that .NET version is out of support. The tooltip also warns when support is ending within 30 days.
   - If you're offline, it stays grey. It never installs or updates anything.

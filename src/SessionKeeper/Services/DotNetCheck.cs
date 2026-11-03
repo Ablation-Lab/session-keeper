@@ -12,11 +12,124 @@ public static class DotNetRuntime
     public static Version Current => Environment.Version;
 
     public static string Display(Version v) => $".NET {v.Major}.{v.Minor}.{Math.Max(0, v.Build)}";
+
+    private static string? CoreLibLocation
+    {
+        get
+        {
+            try { return typeof(object).Assembly.Location; }
+            catch { return null; }
+        }
+    }
+
+    /// <summary>True when the runtime ships inside the app's own folder (self-contained or single-file).</summary>
+    public static bool IsSelfContained => IsSelfContainedLayout(CoreLibLocation, AppContext.BaseDirectory);
+
+    /// <summary>Folder the running runtime was loaded from (e.g. ...\dotnet\shared\Microsoft.NETCore.App\8.0.33).</summary>
+    public static string? RuntimeFolder => string.IsNullOrEmpty(CoreLibLocation) ? null : Path.GetDirectoryName(CoreLibLocation);
+
+    internal static bool IsSelfContainedLayout(string? coreLibLocation, string appBaseDir)
+    {
+        if (string.IsNullOrEmpty(coreLibLocation)) return true; // single-file bundle: the runtime is inside the exe
+        var dir = Path.GetDirectoryName(coreLibLocation) ?? "";
+        return string.Equals(Norm(dir), Norm(appBaseDir), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string Norm(string p) => p.TrimEnd('\\', '/');
+}
+
+/// <summary>.NET runtimes installed on this PC, read from the dotnet install folders (no dotnet.exe is run).</summary>
+public sealed record InstalledRuntimes(IReadOnlyList<string> NetCore, IReadOnlyList<string> WindowsDesktop)
+{
+    public static InstalledRuntimes Find() => Find(CandidateRoots());
+
+    public static InstalledRuntimes Find(IEnumerable<string> roots)
+    {
+        var core = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var desktop = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var root in roots.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            AddVersions(Path.Combine(root, "shared", "Microsoft.NETCore.App"), core);
+            AddVersions(Path.Combine(root, "shared", "Microsoft.WindowsDesktop.App"), desktop);
+        }
+        return new InstalledRuntimes(Sorted(core), Sorted(desktop));
+    }
+
+    /// <summary>Where dotnet installs live: DOTNET_ROOT, the registered install location, Program Files, and the running runtime's root.</summary>
+    public static IEnumerable<string> CandidateRoots()
+    {
+        var roots = new List<string>();
+        void Add(string? p)
+        {
+            try { if (!string.IsNullOrWhiteSpace(p) && Path.IsPathFullyQualified(p)) roots.Add(Path.GetFullPath(p)); }
+            catch { }
+        }
+        Add(Environment.GetEnvironmentVariable("DOTNET_ROOT_X64"));
+        Add(Environment.GetEnvironmentVariable("DOTNET_ROOT"));
+        try
+        {
+            // The installer records its location in the 32-bit registry view (read-only access).
+            using var hklm = Microsoft.Win32.RegistryKey.OpenBaseKey(Microsoft.Win32.RegistryHive.LocalMachine, Microsoft.Win32.RegistryView.Registry32);
+            using var key = hklm.OpenSubKey(@"SOFTWARE\dotnet\Setup\InstalledVersions\x64");
+            Add(key?.GetValue("InstallLocation") as string);
+        }
+        catch { }
+        Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet"));
+        // ...\dotnet\shared\Microsoft.NETCore.App\<version>  ->  ...\dotnet
+        if (DotNetRuntime.RuntimeFolder is { } rf && !DotNetRuntime.IsSelfContained)
+            Add(Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(rf))));
+        return roots;
+    }
+
+    private static void AddVersions(string dir, HashSet<string> into)
+    {
+        try
+        {
+            if (!Directory.Exists(dir)) return;
+            foreach (var d in Directory.EnumerateDirectories(dir))
+            {
+                var name = Path.GetFileName(d);
+                if (char.IsDigit(name.FirstOrDefault()) && Version.TryParse(name.Split('-')[0], out _)) into.Add(name);
+            }
+        }
+        catch { }
+    }
+
+    private static List<string> Sorted(IEnumerable<string> versions) => versions
+        .OrderBy(v => Version.TryParse(v.Split('-')[0], out var p) ? p : new Version(0, 0))
+        .ThenBy(v => v.Contains('-') ? 0 : 1) // previews before the release of the same number
+        .ThenBy(v => v, StringComparer.OrdinalIgnoreCase)
+        .ToList();
 }
 
 /// <param name="Outdated">A newer patch exists for this .NET channel, or the channel is out of support.</param>
-/// <param name="Detail">Tooltip text: the latest version and why.</param>
-public sealed record RuntimeStatus(bool Outdated, string Detail);
+/// <param name="Detail">Summary: the latest version and why.</param>
+/// <param name="Latest">Latest patch of the channel, e.g. "8.0.33".</param>
+/// <param name="Support">Support status, e.g. "maintenance, ends 10 Nov 2026 (in 7 days)".</param>
+public sealed record RuntimeStatus(bool Outdated, string Detail, string? Latest = null, string? Support = null);
+
+/// <summary>Builds the runtime part's tooltip (pure, unit-tested).</summary>
+public static class RuntimeTooltip
+{
+    public static string Build(Version running, bool selfContained, InstalledRuntimes? installed, RuntimeStatus? status, string channel)
+    {
+        var lines = new List<string>
+        {
+            $"Running on: {DotNetRuntime.Display(running)} " + (selfContained ? "(self-contained – bundled with the app)" : "(framework-dependent)"),
+        };
+        if (installed != null)
+        {
+            lines.Add("Installed on this PC: " + (installed.NetCore.Count > 0 ? ".NET " + string.Join(", ", installed.NetCore) : "no shared .NET runtimes found"));
+            if (installed.WindowsDesktop.Count > 0) lines.Add("    Windows Desktop runtime: " + string.Join(", ", installed.WindowsDesktop));
+        }
+        if (status?.Latest != null) lines.Add($"Latest .NET {channel} patch: {status.Latest}");
+        if (status?.Support != null) lines.Add("Support: " + status.Support);
+        if (status is { Outdated: true }) lines.Add(status.Detail);
+        if (status is { Outdated: true } && selfContained)
+            lines.Add("This copy is self-contained: updating .NET means rebuilding SessionKeeper, not installing a new runtime.");
+        return string.Join("\n", lines);
+    }
+}
 
 /// <summary>
 /// Compares the running .NET version with Microsoft's official release metadata (releases-index.json, then
@@ -92,14 +205,18 @@ public sealed class DotNetReleaseCheck
         var eolText = eol?.ToString("d MMM yyyy", CultureInfo.InvariantCulture);
         var name = $".NET {info.Channel}";
 
+        var latestText = latest.ToString(3);
         if (string.Equals(info.SupportPhase, "eol", StringComparison.OrdinalIgnoreCase) || (eol is { } end && now.Date >= end.Date))
             return new RuntimeStatus(true,
                 $"{name} is out of support{(eolText != null ? " since " + eolText : "")}: Microsoft no longer releases security fixes for it. " +
-                $"Latest {name} patch: {latest.ToString(3)}.");
+                $"Latest {name} patch: {latestText}.",
+                latestText, "out of support" + (eolText != null ? " since " + eolText : ""));
 
-        string supportNote = eol is { } soon && soon - now <= SupportWarning
-            ? $" {name} support ends {eolText} (in {Math.Max(0, (int)Math.Ceiling((soon.Date - now.Date).TotalDays))} days)."
-            : "";
+        int? daysLeft = eol is { } e2 ? Math.Max(0, (int)Math.Ceiling((e2.Date - now.Date).TotalDays)) : null;
+        bool endingSoon = eol is { } soon && soon - now <= SupportWarning;
+        string supportNote = endingSoon ? $" {name} support ends {eolText} (in {daysLeft} days)." : "";
+        string support = (string.IsNullOrEmpty(info.SupportPhase) ? "supported" : info.SupportPhase) +
+                         (eolText != null ? $", ends {eolText}" + (endingSoon ? $" (in {daysLeft} days)" : "") : "");
 
         if (Compare(latest, current) > 0)
         {
@@ -108,10 +225,10 @@ public sealed class DotNetReleaseCheck
             int cves = newer?.Sum(r => r.Cves) ?? 0;
             var why = security ? "security fixes" + (cves > 0 ? $" ({cves} CVE{(cves == 1 ? "" : "s")})" : "") : "bug fixes";
             var count = newer is { Count: > 1 } ? $" ({newer.Count} newer patches)" : "";
-            return new RuntimeStatus(true, $".NET {latest.ToString(3)} available – {why}{count}.{supportNote}");
+            return new RuntimeStatus(true, $".NET {latestText} available – {why}{count}.{supportNote}", latestText, support);
         }
 
-        return new RuntimeStatus(false, $"Latest {name} patch.{supportNote}");
+        return new RuntimeStatus(false, $"Latest {name} patch.{supportNote}", latestText, support);
     }
 
     private static int Compare(Version a, Version b) =>

@@ -38,7 +38,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         CurrentList.ItemsSource = _currentRows;
         ShowVersion(BuildInfo.Current, null);
-        ShowRuntime(DotNetRuntime.Current, null);
+        ShowRuntime(DotNetRuntime.Current, null, null);
         _timer.Tick += async (_, _) => await AutoRefreshAsync();
         Loaded += async (_, _) =>
         {
@@ -110,9 +110,12 @@ public partial class MainWindow : Window
         try
         {
             var current = DotNetRuntime.Current;
+            // Local and quick (folder listing only), but still off the UI thread.
+            var installed = await Task.Run(() => InstalledRuntimes.Find());
+            ShowRuntime(current, null, installed);
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var status = await Task.Run(() => new DotNetReleaseCheck().CheckAsync(current, cts.Token), cts.Token);
-            ShowRuntime(current, status);
+            ShowRuntime(current, status, installed);
         }
         catch (Exception ex) when (ex is OperationCanceledException or System.Net.Http.HttpRequestException)
         {
@@ -124,13 +127,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ShowRuntime(Version runtime, RuntimeStatus? status)
+    private void ShowRuntime(Version runtime, RuntimeStatus? status, InstalledRuntimes? installed)
     {
         bool outdated = status?.Outdated == true;
-        RuntimeRun.Text = " · " + DotNetRuntime.Display(runtime);
+        RuntimeRun.Text = " · Runs on " + DotNetRuntime.Display(runtime);
         RuntimeRun.Foreground = (System.Windows.Media.Brush)FindResource(outdated ? "Warn" : "Faint");
-        RuntimeRun.ToolTip = $"Running on {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}" +
-                             (status != null ? "\n" + status.Detail : "");
+        RuntimeRun.ToolTip = RuntimeTooltip.Build(runtime, DotNetRuntime.IsSelfContained, installed, status, $"{runtime.Major}.{runtime.Minor}");
     }
 
     private void ShowVersion(BuildInfo build, UpdateStatus? status)

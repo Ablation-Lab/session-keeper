@@ -170,6 +170,69 @@ public sealed class DotNetCheckTests : IDisposable
         Assert.Equal(2, net.Calls); // first endpoint (404), second endpoint; the http:// URL was never requested
     }
 
+    // ------------------------------------------------------------------ layout, installed runtimes, tooltip
+
+    [Fact]
+    public void DetectsFrameworkDependentVersusSelfContained()
+    {
+        Assert.False(DotNetRuntime.IsSelfContainedLayout(@"C:\Program Files\dotnet\shared\Microsoft.NETCore.App\8.0.11\System.Private.CoreLib.dll", @"C:\Apps\SessionKeeper\"));
+        Assert.True(DotNetRuntime.IsSelfContainedLayout(@"C:\Apps\SessionKeeper\System.Private.CoreLib.dll", @"C:\Apps\SessionKeeper\"));
+        Assert.True(DotNetRuntime.IsSelfContainedLayout("", @"C:\Apps\SessionKeeper\")); // single-file bundle
+        Assert.False(DotNetRuntime.IsSelfContained); // the test host runs framework-dependent
+    }
+
+    [Fact]
+    public void ListsInstalledRuntimesFromTheDotnetFolders()
+    {
+        string Make(string root, string fx, params string[] versions)
+        {
+            foreach (var v in versions) Directory.CreateDirectory(Path.Combine(root, "shared", fx, v));
+            return root;
+        }
+        var a = Make(Path.Combine(_dir, "dotnet-a"), "Microsoft.NETCore.App", "9.0.2", "8.0.11", "10.0.0", "not-a-version");
+        Make(a, "Microsoft.WindowsDesktop.App", "8.0.11");
+        var b = Make(Path.Combine(_dir, "dotnet-b"), "Microsoft.NETCore.App", "8.0.11", "10.0.0-preview.1");
+
+        var found = InstalledRuntimes.Find(new[] { a, b, Path.Combine(_dir, "missing") });
+        Assert.Equal(new[] { "8.0.11", "9.0.2", "10.0.0-preview.1", "10.0.0" }, found.NetCore); // numeric order, de-duplicated
+        Assert.Equal(new[] { "8.0.11" }, found.WindowsDesktop);
+    }
+
+    [Fact]
+    public void FindsTheRuntimeThisProcessRunsOn()
+    {
+        var v = Environment.Version;
+        Assert.Contains($"{v.Major}.{v.Minor}.{v.Build}", InstalledRuntimes.Find().NetCore);
+    }
+
+    [Fact]
+    public void TooltipSpellsOutRunningInstalledLatestAndSupport()
+    {
+        var installed = new InstalledRuntimes(new[] { "8.0.11", "9.0.2" }, new[] { "8.0.11" });
+        var upToDate = Evaluate(new Version(8, 0, 11), Info("8.0.11", eol: "2026-11-10"), new DateTimeOffset(2026, 11, 3, 9, 0, 0, TimeSpan.Zero))!;
+        Assert.Equal("8.0.11", upToDate.Latest);
+        Assert.Equal("maintenance, ends 10 Nov 2026 (in 7 days)", upToDate.Support);
+
+        var tip = RuntimeTooltip.Build(new Version(8, 0, 11), selfContained: false, installed, upToDate, "8.0");
+        Assert.Equal(string.Join("\n",
+            "Running on: .NET 8.0.11 (framework-dependent)",
+            "Installed on this PC: .NET 8.0.11, 9.0.2",
+            "    Windows Desktop runtime: 8.0.11",
+            "Latest .NET 8.0 patch: 8.0.11",
+            "Support: maintenance, ends 10 Nov 2026 (in 7 days)"), tip);
+
+        var outdated = Evaluate(new Version(8, 0, 11), Info("8.0.14", eol: "2028-01-01", releases: new ReleaseInfo("8.0.14", null, true, 2)), Now)!;
+        var sc = RuntimeTooltip.Build(new Version(8, 0, 11), selfContained: true, installed, outdated, "8.0");
+        Assert.StartsWith("Running on: .NET 8.0.11 (self-contained \u2013 bundled with the app)", sc);
+        Assert.Contains(".NET 8.0.14 available \u2013 security fixes (2 CVEs).", sc);
+        Assert.Contains("updating .NET means rebuilding SessionKeeper, not installing a new runtime", sc);
+        Assert.Contains("Support: maintenance, ends 1 Jan 2028", sc);
+
+        var offline = RuntimeTooltip.Build(new Version(8, 0, 11), selfContained: false, installed, null, "8.0");
+        Assert.DoesNotContain("Latest", offline); // no check result: just what's known locally, no error text
+        Assert.DoesNotContain("Support", offline);
+    }
+
     [Fact]
     public void RuntimeDisplayUsesTheActualRuntime()
     {
