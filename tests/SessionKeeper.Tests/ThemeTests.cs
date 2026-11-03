@@ -30,6 +30,7 @@ public sealed class ThemeTests
                     new SettingsWindow(),
                     new InputDialog("t", "p", "v"),
                     new SaveSnapshotWindow(new List<SaveCandidate> { new() { ProjectDir = @"C:\x" } }),
+                    new NewSessionWindow(new List<string> { @"C:\Projects\demo" }),
                 };
                 foreach (var w in windows)
                 {

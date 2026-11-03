@@ -36,7 +36,7 @@ public static class SessionQueries
     /// them would start a new conversation rather than resume one.
     /// </summary>
     public static (Snapshot Snapshot, List<string> Skipped) BuildSnapshot(
-        IEnumerable<RunningEntry> running, string name, string? note, DateTimeOffset now)
+        IEnumerable<RunningEntry> running, string name, string? note, DateTimeOffset now, Func<string, string?>? nickname = null)
     {
         var snap = new Snapshot
         {
@@ -57,6 +57,7 @@ public static class SessionQueries
             {
                 SessionId = id,
                 ProjectDir = e.ProjectDir,
+                Nickname = id != null ? nickname?.Invoke(id) : null,
                 Title = e.Info?.Title,
                 Summary = e.Info?.LastPrompt,
                 LastActive = e.LastActive,

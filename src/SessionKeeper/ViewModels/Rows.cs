@@ -82,9 +82,31 @@ internal static class Fmt
         IsGenericTitle(title, dir) ? (string.IsNullOrEmpty(dir) ? "" : dir) : FolderName(dir);
 
     /// <summary>First tooltip lines: label, then the short session ID to tell look-alike rows apart.</summary>
-    public static string TooltipHeader(string? title, string? dir, string? sessionId) =>
-        MainLabel(title, dir) + (string.IsNullOrEmpty(sessionId) ? "" : "\nSession " + ShortId(sessionId) + "  (" + sessionId + ")") +
-        "\n" + (dir ?? "(folder unknown)");
+    public static string TooltipHeader(string? title, string? dir, string? sessionId) => TooltipHeader(null, title, dir, sessionId);
+
+    /// <summary>With a nickname: it's the bold label, the folder is the grey text, and the original title moves to the tooltip.</summary>
+    public static string MainLabel(string? nickname, string? title, string? dir) => nickname ?? MainLabel(title, dir);
+
+    public static string SecondaryText(string? nickname, string? title, string? dir) => nickname != null ? FolderName(dir) : SecondaryText(title, dir);
+
+    public static string TooltipHeader(string? nickname, string? title, string? dir, string? sessionId)
+    {
+        var lines = new List<string> { MainLabel(nickname, title, dir) };
+        if (nickname != null) lines.Add("Title: " + (string.IsNullOrWhiteSpace(title) ? "(none)" : title.Trim()));
+        if (!string.IsNullOrEmpty(sessionId)) lines.Add("Session " + ShortId(sessionId) + "  (" + sessionId + ")");
+        lines.Add(dir ?? "(folder unknown)");
+        return string.Join("\n", lines);
+    }
+}
+
+/// <summary>A row that can carry a SessionKeeper nickname (Current, Recent and snapshot rows).</summary>
+public interface INameableRow
+{
+    /// <summary>The session the name belongs to, or null when the row has no session ID (can't be named).</summary>
+    string? NameableSessionId { get; }
+    string? Nickname { get; set; }
+    /// <summary>What the row is called right now (used to pre-fill the Rename box).</summary>
+    string MainLabel { get; }
 }
 
 internal static class Brushes2
@@ -106,18 +128,20 @@ internal static class Brushes2
 /// A row on the "Current" tab. Rows are updated in place on each refresh (keyed by PID) so tooltips,
 /// scroll position and focus survive the 10-second auto-refresh.
 /// </summary>
-public sealed class CurrentRow : Observable
+public sealed class CurrentRow : Observable, INameableRow
 {
     private RunningSession _running;
     private SessionInfo? _info;
     private bool _folderMissing;
+    private string? _nickname;
 
     /// <summary>Build off the UI thread: <paramref name="folderMissing"/> comes from <see cref="Services.FolderProbe"/>.</summary>
-    public CurrentRow(RunningSession running, SessionInfo? info, bool folderMissing)
+    public CurrentRow(RunningSession running, SessionInfo? info, bool folderMissing, string? nickname = null)
     {
         _running = running;
         _info = info;
         _folderMissing = folderMissing;
+        _nickname = nickname;
     }
 
     public void UpdateFrom(CurrentRow newer)
@@ -125,7 +149,15 @@ public sealed class CurrentRow : Observable
         _running = newer._running;
         _info = newer._info;
         _folderMissing = newer._folderMissing;
+        _nickname = newer._nickname;
         Raise(string.Empty); // refresh every binding on this row
+    }
+
+    public string? NameableSessionId => SessionStore.IsValidSessionId(Running.SessionId) ? Running.SessionId : null;
+    public string? Nickname
+    {
+        get => _nickname;
+        set { _nickname = value; Raise(string.Empty); }
     }
 
     public void RefreshTimes() => Raise(nameof(AgoText));
@@ -140,8 +172,8 @@ public sealed class CurrentRow : Observable
     public Visibility MissingVisibility => FolderMissing ? Visibility.Visible : Visibility.Collapsed;
 
     private string? Title => Running.Name ?? Info?.Title;
-    public string MainLabel => Fmt.MainLabel(Title, ProjectDir);
-    public string SecondaryText => Fmt.SecondaryText(Title, ProjectDir);
+    public string MainLabel => Fmt.MainLabel(Nickname, Title, ProjectDir);
+    public string SecondaryText => Fmt.SecondaryText(Nickname, Title, ProjectDir);
     public Visibility SecondaryVisibility => SecondaryText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>Only a matched session with a conversation file can be resumed by ID.</summary>
@@ -151,7 +183,7 @@ public sealed class CurrentRow : Observable
         : Running.State is RunState.Unmatched or RunState.Starting
             ? "Can't open: this process isn't matched to a session ID"
             : "Can't open: the session has no messages yet, so there's nothing to resume";
-    public LaunchItem? ToLaunchItem() => CanOpen ? new LaunchItem(ProjectDir!, SessionId, FolderName) : null;
+    public LaunchItem? ToLaunchItem() => CanOpen ? new LaunchItem(ProjectDir!, SessionId, FolderName, Nickname) : null;
 
     public string Summary =>
         Running.State == RunState.Unmatched ? "Unmatched: " + (Running.Cwd == null ? "folder unknown" : "not in Claude's session registry")
@@ -185,7 +217,7 @@ public sealed class CurrentRow : Observable
     {
         get
         {
-            var lines = new List<string> { Fmt.TooltipHeader(Title, ProjectDir, SessionId) };
+            var lines = new List<string> { Fmt.TooltipHeader(Nickname, Title, ProjectDir, SessionId) };
             lines.Add("PID: " + Running.Pid + (Running.StartedAt is { } s ? "   started " + Fmt.When(s) : ""));
             if (Info?.LastPrompt is { } lp) lines.Add("Last message: " + Fmt.Trim(lp, 300));
             if (Running.Note != null) lines.Add(Running.Note);
@@ -196,11 +228,23 @@ public sealed class CurrentRow : Observable
 }
 
 /// <summary>A row on the "Recent" tab.</summary>
-public sealed class RecentRow : Observable
+public sealed class RecentRow : Observable, INameableRow
 {
     private bool _isChecked;
     private bool _isRunning;
+    private string? _nickname;
     public required SessionInfo Info { get; init; }
+
+    public string? NameableSessionId => Info.SessionId;
+    public string? Nickname
+    {
+        get => _nickname;
+        set
+        {
+            _nickname = value;
+            Raise(nameof(Nickname)); Raise(nameof(MainLabel)); Raise(nameof(SecondaryText)); Raise(nameof(SecondaryVisibility)); Raise(nameof(Tooltip));
+        }
+    }
 
     /// <summary>Updated in place by the 10-second refresh, so the badge clears soon after a session closes.</summary>
     public bool IsRunning
@@ -223,22 +267,22 @@ public sealed class RecentRow : Observable
     public bool FolderMissing { get; init; }
     public Visibility MissingVisibility => FolderMissing ? Visibility.Visible : Visibility.Collapsed;
     public Visibility RunningVisibility => IsRunning ? Visibility.Visible : Visibility.Collapsed;
-    public string MainLabel => Fmt.MainLabel(Info.Title, Info.ProjectDir);
-    public string SecondaryText => Fmt.SecondaryText(Info.Title, Info.ProjectDir);
+    public string MainLabel => Fmt.MainLabel(Nickname, Info.Title, Info.ProjectDir);
+    public string SecondaryText => Fmt.SecondaryText(Nickname, Info.Title, Info.ProjectDir);
     public Visibility SecondaryVisibility => SecondaryText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     public string Summary => Fmt.Trim(Info.LastPrompt ?? Info.FirstPrompt, 160);
     public string WhenText => Fmt.When(Info.LastActive);
     public string ShortId => Fmt.ShortId(Info.SessionId);
     public bool CanOpen => Info.ProjectDir != null;
     public string OpenTooltip => CanOpen ? "Open this session in a new window" : "Can't open: the session's folder isn't known";
-    public LaunchItem? ToLaunchItem() => CanOpen ? new LaunchItem(Info.ProjectDir!, Info.SessionId, FolderName) : null;
+    public LaunchItem? ToLaunchItem() => CanOpen ? new LaunchItem(Info.ProjectDir!, Info.SessionId, FolderName, Nickname) : null;
     public bool IsToday => Info.LastActive.ToLocalTime().Date == DateTime.Today;
 
     public string Tooltip
     {
         get
         {
-            var lines = new List<string> { Fmt.TooltipHeader(Info.Title, Info.ProjectDir, Info.SessionId) };
+            var lines = new List<string> { Fmt.TooltipHeader(Nickname, Info.Title, Info.ProjectDir, Info.SessionId) };
             if (Info.Started is { } s) lines.Add("Started: " + Fmt.When(s));
             lines.Add("Last active: " + Fmt.When(Info.LastActive));
             if (Info.FirstPrompt != null) lines.Add("First message: " + Fmt.Trim(Info.FirstPrompt, 300));
@@ -260,10 +304,24 @@ public sealed class SnapshotListItem
         : File.Error ?? "";
 }
 
-public sealed class SnapshotSessionRow : Observable
+public sealed class SnapshotSessionRow : Observable, INameableRow
 {
     private bool _isRunning;
+    private string? _liveNickname;
     public required SnapshotSession Session { get; init; }
+
+    public string? NameableSessionId => SessionStore.IsValidSessionId(Session.SessionId) ? Session.SessionId : null;
+
+    /// <summary>The session's current nickname, else the one saved in the snapshot.</summary>
+    public string? Nickname
+    {
+        get => _liveNickname ?? NicknameStore.Clean(Session.Nickname);
+        set
+        {
+            _liveNickname = value;
+            Raise(nameof(Nickname)); Raise(nameof(MainLabel)); Raise(nameof(SecondaryText)); Raise(nameof(SecondaryVisibility)); Raise(nameof(Tooltip));
+        }
+    }
 
     /// <summary>Updated in place by the 10-second refresh while the Snapshots tab is showing.</summary>
     public bool IsRunning
@@ -282,8 +340,8 @@ public sealed class SnapshotSessionRow : Observable
     public bool FolderMissing { get; init; }
     public Visibility MissingVisibility => FolderMissing ? Visibility.Visible : Visibility.Collapsed;
     public Visibility RunningVisibility => IsRunning ? Visibility.Visible : Visibility.Collapsed;
-    public string MainLabel => Fmt.MainLabel(Session.Title, Session.ProjectDir);
-    public string SecondaryText => Fmt.SecondaryText(Session.Title, Session.ProjectDir);
+    public string MainLabel => Fmt.MainLabel(Nickname, Session.Title, Session.ProjectDir);
+    public string SecondaryText => Fmt.SecondaryText(Nickname, Session.Title, Session.ProjectDir);
     public Visibility SecondaryVisibility => SecondaryText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     public string Summary => Session.SessionId == null
         ? "New session in this folder"
@@ -293,13 +351,13 @@ public sealed class SnapshotSessionRow : Observable
         : Session.SessionId == null ? "Start a new Claude Code session in this folder (no session ID was saved)"
         : "Open this session in a new window";
     public LaunchItem? ToLaunchItem() => CanOpen
-        ? new LaunchItem(Session.ProjectDir, Services.SessionStore.IsValidSessionId(Session.SessionId) ? Session.SessionId : null, FolderName)
+        ? new LaunchItem(Session.ProjectDir, Services.SessionStore.IsValidSessionId(Session.SessionId) ? Session.SessionId : null, FolderName, Nickname)
         : null;
     public string Note => Session.Note ?? "";
     public Visibility NoteVisibility => string.IsNullOrWhiteSpace(Session.Note) ? Visibility.Collapsed : Visibility.Visible;
     public string Tooltip => string.Join("\n", new[]
     {
-        Fmt.TooltipHeader(Session.Title, Session.ProjectDir, Session.SessionId),
+        Fmt.TooltipHeader(Nickname, Session.Title, Session.ProjectDir, Session.SessionId),
         Session.SessionId != null ? null : "No session ID: restores as a fresh claude in this folder",
         Session.LastActive is { } la ? "Last active: " + Fmt.When(la) : null,
         FolderMissing ? "Folder no longer exists; will be skipped on restore." : null,
@@ -313,6 +371,7 @@ public sealed class SaveCandidate : Observable
     private string _note = "";
     public string? SessionId { get; init; }
     public required string ProjectDir { get; init; }
+    public string? Nickname { get; init; }
     public string? Title { get; init; }
     public string? Summary { get; init; }
     public DateTimeOffset? LastActive { get; init; }
@@ -327,13 +386,13 @@ public sealed class SaveCandidate : Observable
     public Visibility NotePlaceholderVisibility => string.IsNullOrEmpty(_note) ? Visibility.Visible : Visibility.Collapsed;
 
     public string FolderName => Fmt.FolderName(ProjectDir);
-    public string MainLabel => Fmt.MainLabel(Title, ProjectDir);
-    public string SecondaryText => Fmt.SecondaryText(Title, ProjectDir);
+    public string MainLabel => Fmt.MainLabel(Nickname, Title, ProjectDir);
+    public string SecondaryText => Fmt.SecondaryText(Nickname, Title, ProjectDir);
     public Visibility SecondaryVisibility => SecondaryText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     // The title is now the main label, so the detail line carries the last message instead.
     public string Detail => (IsRunning ? "running · " : "") + Fmt.When(LastActive) +
                             (SessionId == null ? " · new session" : "") +
                             (string.IsNullOrEmpty(Summary) ? "" : "  —  " + Fmt.Trim(Summary, 90));
-    public string Tooltip => Fmt.TooltipHeader(Title, ProjectDir, SessionId) +
+    public string Tooltip => Fmt.TooltipHeader(Nickname, Title, ProjectDir, SessionId) +
                              (Summary != null ? "\nLast message: " + Fmt.Trim(Summary, 300) : "");
 }

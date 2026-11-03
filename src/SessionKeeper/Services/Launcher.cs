@@ -5,7 +5,11 @@ using System.Text;
 namespace SessionKeeper.Services;
 
 /// <summary>One terminal tab to open. SessionId null = start a fresh claude in the folder.</summary>
-public sealed record LaunchItem(string ProjectDir, string? SessionId, string Label);
+/// <summary>
+/// One window/tab to open. SessionId null = start a fresh claude in the folder. Title (the session's nickname)
+/// becomes the window/tab title and is kept there (Claude's own title updates are switched off for it).
+/// </summary>
+public sealed record LaunchItem(string ProjectDir, string? SessionId, string Label, string? Title = null);
 
 public sealed class LaunchResult
 {
@@ -182,6 +186,9 @@ public static class Launcher
     /// - NoDefaultCurrentDirectoryInExePath: stops cmd.exe (npm's claude.cmd shim calls bare "node")
     ///   from running a node.exe/node.bat planted in the project folder.
     /// - CLAUDE_CONFIG_DIR is forwarded when SessionKeeper is reading a non-default Claude folder.
+    /// - With a Title (nickname): the console title is set to it (a quoted literal) and Claude's own
+    ///   terminal-title updates are switched off (CLAUDE_CODE_DISABLE_TERMINAL_TITLE), or Claude would
+    ///   replace it within a second. Sessions without a nickname keep Claude's live title.
     /// </summary>
     public static string BuildScript(LaunchItem it, string claude, string? configDir = null)
     {
@@ -191,6 +198,12 @@ public static class Launcher
         sb.Append("$ErrorActionPreference = 'Stop'; ");
         sb.Append("$env:NoDefaultCurrentDirectoryInExePath = '1'; ");
         if (!string.IsNullOrEmpty(configDir)) sb.Append("$env:CLAUDE_CONFIG_DIR = ").Append(PsQuote(configDir)).Append("; ");
+        if (NicknameStore.Clean(it.Title) is { } title)
+        {
+            // A title must never stop the session from starting, so a host that refuses it is ignored.
+            sb.Append("try { $Host.UI.RawUI.WindowTitle = ").Append(PsQuote(title)).Append(" } catch { }; ");
+            sb.Append("$env:CLAUDE_CODE_DISABLE_TERMINAL_TITLE = '1'; ");
+        }
         sb.Append("Set-Location -LiteralPath ").Append(PsQuote(it.ProjectDir)).Append("; ");
         sb.Append("$ErrorActionPreference = 'Continue'; ");
         sb.Append("Write-Host ").Append(PsQuote((it.SessionId != null ? "SessionKeeper: resuming " : "SessionKeeper: new session in ") + it.Label))
@@ -219,13 +232,18 @@ public static class Launcher
         return sb.ToString();
     }
 
+    /// <summary>
+    /// A tab title safe for the wt command line: letters, digits, spaces and a little harmless punctuation.
+    /// Never ';' (wt's command separator), '%', quotes, backslashes or control characters.
+    /// </summary>
     public static string SafeTitle(string label)
     {
         var sb = new StringBuilder();
         foreach (var ch in label)
         {
-            if (sb.Length >= 40) break;
-            if (char.IsLetterOrDigit(ch) || ch is ' ' or '-' or '_' or '.' or '(' or ')') sb.Append(ch);
+            if (sb.Length >= 60) break;
+            if (char.IsLetterOrDigit(ch) || ch is ' ' or '-' or '_' or '.' or '(' or ')' or '[' or ']' or ':' or ',' or '!' or '?' or '\'' or '+' or '#' or '@' or '&' or '/')
+                sb.Append(ch);
         }
         var t = sb.ToString().Trim();
         return t.Length == 0 ? "claude" : t;
@@ -235,10 +253,13 @@ public static class Launcher
     /// wt splits its command line on ';' (escape rules for "\;" next to path backslashes are ambiguous) and
     /// expands %VAR% in -d, so a folder containing ';' or '%' is not passed via -d at all: the encoded
     /// script's Set-Location moves into it instead. The title never contains ';', '%' or quotes.
+    /// With a nickname, the tab is titled with it and --suppressApplicationTitle keeps Claude from replacing it.
     /// </summary>
     public static string BuildTabArgs(LaunchItem it, string claude, string? configDir = null)
     {
-        var sb = new StringBuilder("new-tab --title ").Append(WinQuote(SafeTitle(it.Label)));
+        var nickname = NicknameStore.Clean(it.Title);
+        var sb = new StringBuilder("new-tab --title ").Append(WinQuote(SafeTitle(nickname ?? it.Label)));
+        if (nickname != null) sb.Append(" --suppressApplicationTitle");
         if (it.ProjectDir.IndexOfAny(new[] { ';', '%' }) < 0) sb.Append(" -d ").Append(WinQuote(it.ProjectDir));
         sb.Append(' ').Append(WinQuote(PowerShellPath)).Append(" -NoLogo -NoExit -EncodedCommand ")
           .Append(Encode(BuildScript(it, claude, configDir)));

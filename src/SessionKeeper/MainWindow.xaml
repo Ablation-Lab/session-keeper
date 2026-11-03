@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Style="{StaticResource AppWindow}"
-        Title="SessionKeeper" Width="840" Height="540" MinWidth="560" MinHeight="380"
+        Title="SessionKeeper" Width="920" Height="540" MinWidth="560" MinHeight="380"
         WindowStartupLocation="CenterScreen">
     <Window.Resources>
         <!-- Shared bits of the row templates -->
@@ -29,9 +29,16 @@
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="ToolTipService.ShowOnDisabled" Value="True"/>
         </Style>
+        <!-- Right-click a row: Open, Rename (your own name for the session), Clear name. -->
+        <ContextMenu x:Key="RowMenu" x:Shared="False" Opened="RowMenu_Opened">
+            <MenuItem Header="Open" Click="MenuOpen_Click"/>
+            <MenuItem Header="Rename…" InputGestureText="F2" Click="MenuRename_Click"/>
+            <MenuItem Header="Clear name" Click="MenuClearName_Click"/>
+        </ContextMenu>
         <!-- Double-click (or Enter) on a row does the same as its Open button. -->
         <Style x:Key="OpenableItem" TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
             <EventSetter Event="MouseDoubleClick" Handler="Row_DoubleClick"/>
+            <Setter Property="ContextMenu" Value="{StaticResource RowMenu}"/>
         </Style>
     </Window.Resources>
 
@@ -258,6 +265,7 @@
                      x:Name="RuntimeRun" FontSize="11" Foreground="{StaticResource Faint}"/>
             </TextBlock>
             <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Content="New session…" Click="NewSession_Click" ToolTip="Start a new Claude Code session in a project folder"/>
                 <Button Content="Refresh" Click="RefreshCurrent_Click"/>
                 <Button x:Name="SaveCurrentButton" Style="{StaticResource PrimaryButton}" Content="Save these as snapshot…" Click="SaveCurrent_Click"/>
             </StackPanel>
@@ -265,6 +273,7 @@
         <DockPanel x:Name="BarRecent" Grid.Row="2" Margin="0,10,0,0" Visibility="Collapsed">
             <TextBlock x:Name="RecentSelectionText" Style="{StaticResource MutedText}" VerticalAlignment="Center"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="New session…" Click="NewSession_Click" ToolTip="Start a new Claude Code session in a project folder"/>
                 <Button Content="Refresh" Click="RefreshRecent_Click"/>
                 <Button x:Name="SaveRecentButton" Content="Save selected as snapshot…" Click="SaveRecent_Click"/>
                 <Button x:Name="ReopenButton" Style="{StaticResource PrimaryButton}" Content="Reopen selected" Click="Reopen_Click"/>
@@ -276,6 +285,7 @@
                 <Button Style="{StaticResource LinkButton}" Content="Open folder" Click="OpenSnapshotFolder_Click"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="New session…" Click="NewSession_Click" ToolTip="Start a new Claude Code session in a project folder"/>
                 <Button x:Name="RenameButton" Content="Rename…" Click="RenameSnapshot_Click"/>
                 <Button x:Name="DeleteButton" Content="Delete" Click="DeleteSnapshot_Click"/>
                 <Button x:Name="RestoreButton" Style="{StaticResource PrimaryButton}" Content="Restore" Click="RestoreSnapshot_Click"/>

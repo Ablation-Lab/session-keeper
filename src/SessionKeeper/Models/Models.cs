@@ -52,6 +52,8 @@ public sealed class SnapshotSession
     /// <summary>Null means "start a fresh claude in this folder" (session had no messages / unmatched).</summary>
     public string? SessionId { get; set; }
     public string ProjectDir { get; set; } = "";
+    /// <summary>Your SessionKeeper name for the session when the snapshot was saved (optional).</summary>
+    public string? Nickname { get; set; }
     public string? Title { get; set; }
     public string? Summary { get; set; }
     public DateTimeOffset? LastActive { get; set; }

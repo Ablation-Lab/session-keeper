@@ -23,6 +23,12 @@ public partial class MainWindow : Window
     private HashSet<string> _runningIds = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Sessions we just opened count as running until they register (see <see cref="LaunchGrace"/>).</summary>
     private readonly LaunchGrace _launchGrace = new();
+    /// <summary>Your names for sessions (SessionKeeper's own file; Claude Code's files are never touched).</summary>
+    private readonly NicknameStore _names = new();
+    /// <summary>Names given in the New session dialog, waiting for that session to show up under Current.</summary>
+    private readonly List<PendingName> _pendingNames = new();
+    private bool _pendingWatchRunning;
+    private sealed record PendingName(string Folder, DateTimeOffset Since, string Name);
     private bool _badgeRefreshBusy;
     private List<RecentRow> _recentRows = new();
     private Task? _currentRefresh;
@@ -216,7 +222,7 @@ public partial class MainWindow : Window
         try
         {
             var rows = await Task.Run(() => SessionQueries.GetRunning(_scanner, _store)
-                .Select(e => new CurrentRow(e.Running, e.Info, e.FolderMissing))
+                .Select(e => new CurrentRow(e.Running, e.Info, e.FolderMissing, _names.Get(e.Running.SessionId)))
                 .ToList());
 
             SyncCurrentRows(rows);
@@ -322,6 +328,7 @@ public partial class MainWindow : Window
                 FolderMissing = x.Second,
                 IsRunning = runningSet.Contains(x.First.SessionId),
                 IsChecked = keepChecked.Contains(x.First.SessionId),
+                Nickname = _names.Get(x.First.SessionId),
             }).ToList();
             foreach (var r in _recentRows) r.PropertyChanged += RecentRow_PropertyChanged;
 
@@ -371,7 +378,7 @@ public partial class MainWindow : Window
     private async void Reopen_Click(object sender, RoutedEventArgs e)
     {
         var items = _recentRows.Where(r => r.IsChecked)
-            .Select(r => new LaunchItem(r.Info.ProjectDir ?? "", r.Info.SessionId, r.FolderName))
+            .Select(r => new LaunchItem(r.Info.ProjectDir ?? "", r.Info.SessionId, r.FolderName, r.Nickname))
             .ToList();
         await ReopenAsync(items, LaunchGuard.Reopen);
     }
@@ -382,6 +389,7 @@ public partial class MainWindow : Window
         {
             SessionId = r.Info.SessionId,
             ProjectDir = r.Info.ProjectDir!,
+            Nickname = r.Nickname,
             Title = r.Info.Title,
             Summary = r.Info.LastPrompt ?? r.Info.FirstPrompt,
             LastActive = r.Info.LastActive,
@@ -457,6 +465,7 @@ public partial class MainWindow : Window
             Session = s,
             FolderMissing = !FolderProbe.Exists(s.ProjectDir),
             IsRunning = s.SessionId != null && running.Contains(s.SessionId),
+            Nickname = _names.Get(s.SessionId), // null: falls back to the name saved with the snapshot
         }).ToList());
         if (version != _snapshotDetailsVersion) return; // selection changed meanwhile
 
@@ -476,7 +485,7 @@ public partial class MainWindow : Window
         if ((SnapshotList.SelectedItem as SnapshotListItem)?.File.Snapshot is not { } snap) return;
         var items = snap.Sessions
             .Select(s => new LaunchItem(s.ProjectDir ?? "", SessionStore.IsValidSessionId(s.SessionId) ? s.SessionId : null,
-                                        Fmt.FolderName(s.ProjectDir)))
+                                        Fmt.FolderName(s.ProjectDir), _names.Get(s.SessionId) ?? NicknameStore.Clean(s.Nickname)))
             .ToList();
         await ReopenAsync(items, LaunchGuard.Restore);
     }
@@ -551,6 +560,7 @@ public partial class MainWindow : Window
             {
                 SessionId = id,
                 ProjectDir = row.ProjectDir,
+                Nickname = row.Nickname,
                 Title = row.Info?.Title,
                 Summary = row.Info?.LastPrompt,
                 LastActive = row.LastActive,
@@ -571,6 +581,7 @@ public partial class MainWindow : Window
                 {
                     SessionId = info.SessionId,
                     ProjectDir = info.ProjectDir,
+                    Nickname = _names.Get(info.SessionId),
                     Title = info.Title,
                     Summary = info.LastPrompt ?? info.FirstPrompt,
                     LastActive = info.LastActive,
@@ -615,9 +626,9 @@ public partial class MainWindow : Window
     /// the button that triggered it; it opens the launch scope that <see cref="LaunchGuard"/> requires, so
     /// nothing else can launch. Sessions open as PowerShell windows or Windows Terminal tabs per Settings.
     /// </summary>
-    private async Task ReopenAsync(List<LaunchItem> items, string userAction)
+    private async Task<LaunchResult?> ReopenAsync(List<LaunchItem> items, string userAction)
     {
-        if (items.Count == 0 || _launching) return;
+        if (items.Count == 0 || _launching) return null;
         _launching = true;
         bool single = items.Count == 1;
         try
@@ -636,7 +647,7 @@ public partial class MainWindow : Window
                 if (answer != MessageBoxResult.Yes)
                 {
                     SetAllStatus("Not opened: that session is already running");
-                    return;
+                    return null;
                 }
             }
             else if (already.Count > 0)
@@ -647,7 +658,7 @@ public partial class MainWindow : Window
                     "Opening a session twice means two windows writing to the same conversation.\n\n" +
                     "Skip the ones that are already running?\n\nYes = skip them (recommended)\nNo = open second copies anyway",
                     "Already running", MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Yes);
-                if (answer == MessageBoxResult.Cancel) return;
+                if (answer == MessageBoxResult.Cancel) return null;
                 if (answer == MessageBoxResult.Yes)
                 {
                     items = items.Except(already).ToList();
@@ -680,7 +691,7 @@ public partial class MainWindow : Window
             if (ready.Count > 10 &&
                 MessageBox.Show(this, $"Open {ready.Count} {(mode == OpenMode.WindowsTerminalTab ? "Windows Terminal tabs" : "PowerShell windows")}?",
                     "SessionKeeper", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
-                return;
+                return null;
 
             // The launch scope covers only the launch itself: no dialogs (and so no nested message loop that
             // could run a timer tick inside the scope) happen while it is open.
@@ -697,11 +708,13 @@ public partial class MainWindow : Window
             ReportLaunch(result, single);
 
             if (TabRecent.IsChecked == true) await LoadRecentAsync(); // show "running" badges straight away
+            return result;
         }
         catch (Exception ex)
         {
             App.Log(ex);
             MessageBox.Show(this, "Could not open sessions:\n" + ex.Message, "SessionKeeper", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
         }
         finally
         {
@@ -773,6 +786,11 @@ public partial class MainWindow : Window
             e.Handled = true;
             await OpenRowAsync(row);
         }
+        else if (e.Key == Key.F2)
+        {
+            e.Handled = true;
+            RenameRow(row);
+        }
     }
 
     private async Task OpenRowAsync(object row)
@@ -790,6 +808,171 @@ public partial class MainWindow : Window
             return;
         }
         await ReopenAsync(new List<LaunchItem> { item }, LaunchGuard.Open);
+    }
+
+    // ============================================================ names (right-click > Rename / F2)
+
+    private static object? MenuRow(object sender) =>
+        sender is FrameworkElement { DataContext: { } row } ? row : null;
+
+    private void RowMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.ContextMenu menu) return;
+        var row = menu.DataContext;
+        var nameable = row as INameableRow;
+        foreach (var item in menu.Items.OfType<System.Windows.Controls.MenuItem>())
+        {
+            switch (item.Header as string)
+            {
+                case "Open":
+                    item.IsEnabled = row switch { CurrentRow c => c.CanOpen, RecentRow r => r.CanOpen, SnapshotSessionRow s => s.CanOpen, _ => false };
+                    break;
+                case "Rename…":
+                    item.IsEnabled = nameable?.NameableSessionId != null;
+                    break;
+                case "Clear name":
+                    item.IsEnabled = nameable?.NameableSessionId != null && _names.Get(nameable.NameableSessionId) != null;
+                    break;
+            }
+        }
+    }
+
+    private async void MenuOpen_Click(object sender, RoutedEventArgs e)
+    {
+        if (MenuRow(sender) is { } row) await OpenRowAsync(row);
+    }
+
+    private void MenuRename_Click(object sender, RoutedEventArgs e)
+    {
+        if (MenuRow(sender) is { } row) RenameRow(row);
+    }
+
+    private void MenuClearName_Click(object sender, RoutedEventArgs e)
+    {
+        if (MenuRow(sender) is INameableRow { NameableSessionId: { } id }) SetNickname(id, null);
+    }
+
+    /// <summary>Asks for a new name; an empty name goes back to the session's own title.</summary>
+    private void RenameRow(object row)
+    {
+        if (row is not INameableRow n || n.NameableSessionId is not { } id)
+        {
+            MessageBox.Show(this, "This row has no session ID yet, so it can't be named. Unmatched or brand-new sessions get one once Claude Code registers them.",
+                "SessionKeeper", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        var dlg = new InputDialog("Rename session", "Name (leave empty to go back to the session's own title):", _names.Get(id) ?? n.MainLabel) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        SetNickname(id, dlg.Value);
+    }
+
+    private void SetNickname(string sessionId, string? name)
+    {
+        string? stored;
+        try
+        {
+            stored = _names.Set(sessionId, name);
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+            MessageBox.Show(this, "Couldn't save the name:\n" + ex.Message, "SessionKeeper", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        ApplyNickname(sessionId, stored);
+        SetAllStatus(stored != null ? $"Named the session \u201C{stored}\u201D" : "Name cleared");
+    }
+
+    /// <summary>Updates every visible row for that session (Current, Recent and the open snapshot) in place.</summary>
+    private void ApplyNickname(string sessionId, string? name)
+    {
+        bool Same(string? id) => string.Equals(id, sessionId, StringComparison.OrdinalIgnoreCase);
+        foreach (var r in _currentRows.Where(r => Same(r.NameableSessionId))) r.Nickname = name;
+        foreach (var r in _recentRows.Where(r => Same(r.NameableSessionId))) r.Nickname = name;
+        if (SnapshotSessions.ItemsSource is IEnumerable<SnapshotSessionRow> snapRows)
+            foreach (var r in snapRows.Where(r => Same(r.NameableSessionId))) r.Nickname = name;
+    }
+
+    // ============================================================ new session
+
+    private async void NewSession_Click(object sender, RoutedEventArgs e)
+    {
+        List<string> folders;
+        try
+        {
+            var runningFolders = _currentRows.Select(r => r.ProjectDir).ToList(); // read on the UI thread
+            folders = await Task.Run(() => RecentProjectFolders(runningFolders));
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+            folders = new List<string>();
+        }
+        var dlg = new NewSessionWindow(folders) { Owner = this };
+        if (dlg.ShowDialog() != true || dlg.Folder is not { } folder) return;
+
+        var name = dlg.SessionName;
+        var since = DateTimeOffset.Now;
+        var result = await ReopenAsync(new List<LaunchItem> { new(folder, null, Fmt.FolderName(folder), name) }, LaunchGuard.NewSession);
+        if (name != null && result is { OpenedItems.Count: > 0 })
+        {
+            _pendingNames.Add(new PendingName(folder, since.AddSeconds(-5), name));
+            _ = WatchPendingNamesAsync();
+        }
+    }
+
+    /// <summary>Folders of running sessions, then of sessions active in the last 30 days, that still exist.</summary>
+    private List<string> RecentProjectFolders(IReadOnlyList<string?> runningFolders)
+    {
+        var recent = _store.GetRecent(DateTimeOffset.Now.AddDays(-30)).Select(s => s.ProjectDir);
+        return runningFolders.Concat(recent)
+            .Where(d => !string.IsNullOrWhiteSpace(d))
+            .Select(d => d!.TrimEnd('\\', '/'))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(d => FolderProbe.Exists(d))
+            .Take(25)
+            .ToList();
+    }
+
+    /// <summary>
+    /// After a named New session, looks for it every few seconds (read-only scans) and, once it shows up with a
+    /// session ID in that folder, gives it the name. Gives up after 5 minutes (e.g. if it never got past a prompt).
+    /// </summary>
+    private async Task WatchPendingNamesAsync()
+    {
+        if (_pendingWatchRunning) return;
+        _pendingWatchRunning = true;
+        using var noLaunches = LaunchGuard.Background();
+        try
+        {
+            while (_pendingNames.Count > 0)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(3));
+                _pendingNames.RemoveAll(p => DateTimeOffset.Now - p.Since > TimeSpan.FromMinutes(5));
+                if (_pendingNames.Count == 0) break;
+                var running = await Task.Run(() => _scanner.Scan());
+                AttachPendingNames(running);
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+        }
+        finally
+        {
+            _pendingWatchRunning = false;
+        }
+    }
+
+    private void AttachPendingNames(IReadOnlyList<RunningSession> running)
+    {
+        foreach (var pending in _pendingNames.ToList())
+        {
+            var match = PendingNameMatcher.Find(pending.Folder, pending.Since, running, id => _names.Get(id) != null);
+            if (match == null) continue;
+            _pendingNames.Remove(pending);
+            SetNickname(match, pending.Name);
+        }
     }
 
     private static bool IsInside<T>(DependencyObject? d) where T : DependencyObject

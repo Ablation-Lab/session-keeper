@@ -9,7 +9,7 @@ namespace SessionKeeper.Services;
 /// The only way SessionKeeper starts a process.
 ///
 /// - A launch is allowed only inside an explicit user action (<see cref="UserAction"/>), opened by the
-///   Open, Reopen, Restore and Open folder buttons (Snapshots tab and Settings). Background work (auto-refresh, session detection, the
+///   Open, Reopen, Restore, New session and Open folder buttons (Snapshots tab and Settings). Background work (auto-refresh, session detection, the
 ///   tray, the command line) has no such scope, so any launch attempted from there is refused.
 /// - Shell execution is refused outright (no URIs, documents or verbs handed to the shell), the
 ///   executable must be a full path, and wt.exe must be given a new-tab command (wt with no or
@@ -24,7 +24,8 @@ public static class LaunchGuard
     public const string Restore = "Restore";
     public const string OpenSnapshotsFolder = "Open snapshots folder";
     public const string OpenRepoFolder = "Open repo folder";
-    private static readonly HashSet<string> AllowedActions = new() { Open, Reopen, Restore, OpenSnapshotsFolder, OpenRepoFolder };
+    public const string NewSession = "New session";
+    private static readonly HashSet<string> AllowedActions = new() { Open, Reopen, Restore, OpenSnapshotsFolder, OpenRepoFolder, NewSession };
 
     private static readonly AsyncLocal<string?> CurrentActionSlot = new();
     private static readonly object LogGate = new();
@@ -104,7 +105,7 @@ public static class LaunchGuard
     internal static string? Check(ProcessStartInfo psi)
     {
         if (CurrentActionSlot.Value == null)
-            return "not inside an explicit user action (Open, Reopen, Restore or an Open folder button)";
+            return "not inside an explicit user action (Open, Reopen, Restore, New session or an Open folder button)";
         if (psi.UseShellExecute)
             return "shell execution is not allowed";
         if (string.IsNullOrWhiteSpace(psi.FileName) || !Path.IsPathFullyQualified(psi.FileName))

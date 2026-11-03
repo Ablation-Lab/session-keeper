@@ -68,6 +68,7 @@ public partial class SaveSnapshotWindow : Window
             {
                 SessionId = c.SessionId,
                 ProjectDir = c.ProjectDir,
+                Nickname = c.Nickname,
                 Title = c.Title,
                 Summary = c.Summary,
                 LastActive = c.LastActive,

@@ -40,13 +40,13 @@ You need Windows 10 or 11 and the [.NET 8 SDK](https://dotnet.microsoft.com/down
 
 ## Using SessionKeeper
 
-Open **SessionKeeper** from the Start menu. The window has three tabs at the top, **Current**, **Recent** and **Snapshots**, and a gear button at the top right for Settings. Hover over any row to see its full folder path and the first 8 characters of its session ID. The tooltip also shows the last message on Current rows, and the first and last messages on Recent rows.
+Open **SessionKeeper** from the Start menu. The window has three tabs at the top, **Current**, **Recent** and **Snapshots**, and a gear button at the top right for Settings. Every tab's bottom bar has a **New session…** button. Hover over any row to see its full folder path and the first 8 characters of its session ID. The tooltip also shows the last message on Current rows, and the first and last messages on Recent rows.
 
 ### Current tab: what's running now
 
 1. Open the **Current** tab. It's the one shown when the app starts.
 2. Read each row:
-   - **Bold label:** the session's title. If the title is missing or generic (such as "Continuing previous session"), the folder name is shown instead.
+   - **Bold label:** your name for the session if you've given it one (see [Naming sessions](#naming-sessions)). Otherwise it's the session's own title, or the folder name if that title is missing or generic (such as "Continuing previous session").
    - **Grey text on the right:** the project folder. Hover over it for the full path.
    - **Second line:** the last message you sent in that session.
    - **Right-hand side:** how long ago the session was active, and its status: *working*, *needs input* (waiting for you, for example at a permission prompt), *idle*, *starting* (just launched) or *unmatched*.
@@ -61,7 +61,7 @@ The same steps work on the Current, Recent and Snapshots tabs.
 1. Find the session's row.
 2. Click **Open** on the right of the row, double-click the row, or select it and press Enter.
 3. If the session is already running, a **Session already running** box asks whether to open a second copy. The answer defaults to **No**, because two windows writing to one conversation can mix up its history.
-4. The session opens in its project folder and runs `claude --resume <session-id>`, so you're back in the same conversation. It opens as a PowerShell window or a Windows Terminal tab, depending on [Settings](#settings).
+4. The session opens in its project folder and runs `claude --resume <session-id>`, so you're back in the same conversation. It opens as a PowerShell window or a Windows Terminal tab, depending on [Settings](#settings). If you've named the session, the window or tab is titled with that name.
 
 When nothing opens, a message says why. The cases are:
 - The folder no longer exists.
@@ -69,6 +69,32 @@ When nothing opens, a message says why. The cases are:
 - A Current-tab session has no messages yet (its **Open** button is greyed out; hover over it to see why).
 
 A snapshot entry saved without a session ID opens a new Claude Code session in that folder.
+
+### Naming sessions
+
+Give any session your own name, so it's easy to spot, for example "Login fix" instead of "Continuing previous session".
+
+1. Right-click the session's row (on the Current, Recent or Snapshots tab) and choose **Rename…**, or select the row and press F2.
+2. Type a name and click **OK**.
+3. The name becomes the row's bold label on every tab. The session's own title moves to the tooltip (hover over the row), and the folder stays as the grey text.
+4. When you open, reopen or restore the session, its window or tab is titled with the name. To keep it there, Claude Code's own title updates are switched off for that window, so it doesn't show Claude's busy indicator in the title. Unnamed sessions keep Claude's live title.
+5. To go back to the session's own title, right-click the row and choose **Clear name**, or rename it to an empty name.
+
+Names are stored only in SessionKeeper's own file, `%APPDATA%\SessionKeeper\nicknames.json`, keyed by session ID. Claude Code's files are never changed. A snapshot keeps the name each session had when you saved it. A row needs a session ID to be named, so *unmatched* rows can't be.
+
+Names you give a session inside Claude Code itself (its rename command, or `claude --name`) are already shown as that session's title.
+
+### Starting a new session
+
+1. Click **New session…** in the bottom bar (on any tab).
+2. Pick the project folder:
+   - Click one under **Recent project folders** (folders of running and recent sessions), or
+   - Click **Browse…** to choose any folder, or type its full path.
+3. Optionally, type a **Name**.
+4. Click **Start**. A fresh Claude Code session starts in that folder, as a PowerShell window or Windows Terminal tab depending on [Settings](#settings).
+5. If you gave a name, the window or tab is titled with it. As soon as the new session appears under **Current** (usually within a few seconds), the name is attached to it, just as if you'd renamed it.
+
+If the folder doesn't exist, the dialog says so and nothing starts.
 
 ### Recent tab: reopen past sessions
 
@@ -94,7 +120,7 @@ Each row shows the last-active time and the first 8 characters of its session ID
 You can also save from the **Recent** tab: tick sessions, then click **Save selected as snapshot…**. On the **Snapshots** tab, **Save snapshot…** opens the same dialog as on the Current tab.
 
 **What gets saved**
-- For each session: its session ID, project folder, title, last message, last-active time and your note.
+- For each session: its session ID, project folder, your name for it (if any), its title, last message, last-active time and your note.
 - For the snapshot: its name, when it was saved and its note.
 - One readable JSON file per snapshot, in `%APPDATA%\SessionKeeper\snapshots\`, named like `2026-11-03_184000_end-of-day.json`. On the Snapshots tab, **Open folder** opens this folder.
 - A running session with no messages yet is saved without a session ID. Restoring it starts a new session in that folder.
@@ -203,7 +229,7 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
 
 ### Settings file
 
-`%APPDATA%\SessionKeeper\settings.json` stores **Open sessions in** and the optional `sourceRepo`. Start with Windows is a per-user entry under `HKCU\…\CurrentVersion\Run`, and the Start menu shortcut is `SessionKeeper.lnk` in your own Start menu folder. Neither is stored in the settings file.
+`%APPDATA%\SessionKeeper\settings.json` stores **Open sessions in** and the optional `sourceRepo`. Your session names are in `%APPDATA%\SessionKeeper\nicknames.json`. Start with Windows is a per-user entry under `HKCU\…\CurrentVersion\Run`, and the Start menu shortcut is `SessionKeeper.lnk` in your own Start menu folder. Neither is stored in the settings file.
 
 ### How it works
 
@@ -221,13 +247,18 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
 ### Safety
 
 - **Launches only on request.**
-  - Every process SessionKeeper starts goes through one gatekeeper (`LaunchGuard`), which refuses anything outside an explicit click on **Open**, **Reopen selected**, **Restore** or **Open folder**.
+  - Every process SessionKeeper starts goes through one gatekeeper (`LaunchGuard`), which refuses anything outside an explicit click on **Open**, **Reopen selected**, **Restore**, **New session** (its **Start** button) or **Open folder**.
   - Background work has no such permission, so it can never launch anything. That covers auto-refresh, session detection, the tray and the command line.
   - Shell execution (URIs such as `ms-settings:`, documents, verbs) is refused, and so is `wt.exe` without a `new-tab` command. A test fails if any other code calls `Process.Start`.
   - The only background process is the read-only `git` query described above, run under the same rules.
 - **Launch log.** Every launch, every refused attempt, each user action, and app start and exit are logged with a timestamp and the calling source line. The logs are in `%APPDATA%\SessionKeeper\logs\launches-yyyy-MM-dd.log` and kept for 14 days. If a window ever opens that you didn't ask for, check the log for that time: no `LAUNCH` line means SessionKeeper didn't open it.
 - **Read-only towards Claude Code.** Session files and registry entries are opened read-only with full sharing. Processes are opened with query/read rights only. Nothing is ever written to, deleted from or killed in Claude Code's files or processes.
-- **No command injection.** Folder names, titles and notes are never parsed as commands. Each window or tab runs a base64 `-EncodedCommand` script. Its only dynamic values are single-quoted PowerShell literals, with every quote character doubled (including Unicode ‘ ’ quotes), and a session ID that must parse as a GUID. Tab titles are reduced to letters, digits and `-_.() `. A folder containing `;` or `%` is not passed to `-d` at all, because wt splits on `;` and expands `%VAR%`. Notes are never passed to any process.
+- **No command injection.**
+  - Folder names, session names, titles and notes are never parsed as commands.
+  - Each window or tab runs a base64 `-EncodedCommand` script. Its only dynamic values are single-quoted PowerShell literals, with every quote character doubled (including Unicode ‘ ’ quotes), and a session ID that must parse as a GUID. A session name reaches the window title only as such a literal.
+  - Windows Terminal tab titles are reduced to letters, digits, spaces and harmless punctuation, never `;`, `%`, quotes or backslashes.
+  - A folder containing `;` or `%` is not passed to `-d` at all, because wt splits on `;` and expands `%VAR%`.
+  - Session names are cleaned of control and invisible characters and capped at 80 characters. Notes are never passed to any process.
 - **The right folder, the right claude.**
   - If the script can't enter the folder, it stops instead of starting claude somewhere else.
   - `claude` is resolved to a full path, and relative `PATH` entries are ignored, so a repository can't plant its own `claude.cmd`.

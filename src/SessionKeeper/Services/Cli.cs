@@ -149,6 +149,7 @@ public static class Cli
     private static int List(TextWriter w, CliOptions o)
     {
         var running = SessionQueries.GetRunning(new RunningScanner(), new SessionStore());
+        var names = new NicknameStore();
         if (o.Json)
         {
             w.WriteLine(JsonSerializer.Serialize(running.Select(e => new
@@ -156,6 +157,7 @@ public static class Cli
                 pid = e.Running.Pid,
                 status = StatusText(e.Running),
                 sessionId = e.Running.SessionId,
+                nickname = names.Get(e.Running.SessionId),
                 folder = e.ProjectDir,
                 folderMissing = e.FolderMissing,
                 title = e.Running.Name ?? e.Info?.Title,
@@ -172,6 +174,7 @@ public static class Cli
         {
             w.WriteLine();
             w.WriteLine($"  {StatusText(e.Running),-12} {Fmt.FolderName(e.ProjectDir)}  ·  {Fmt.Ago(e.LastActive)}{(e.FolderMissing ? "  ·  FOLDER MISSING" : "")}");
+            if (names.Get(e.Running.SessionId) is { } nick) w.WriteLine($"  {"",-12} name: {Fmt.Trim(nick, 100)}");
             if ((e.Running.Name ?? e.Info?.Title) is { } title) w.WriteLine($"  {"",-12} {Fmt.Trim(title, 100)}");
             if (e.Info?.LastPrompt is { } lp) w.WriteLine($"  {"",-12} last: {Fmt.Trim(lp, 100)}");
             w.WriteLine($"  {"",-12} {e.ProjectDir ?? "(folder unknown)"}  ·  " +
@@ -186,11 +189,13 @@ public static class Cli
         var recent = store.GetRecent(DateTimeOffset.Now.AddDays(-o.Days));
         var running = new RunningScanner().Scan().Where(r => r.SessionId != null).Select(r => r.SessionId!)
                                               .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var names = new NicknameStore();
         if (o.Json)
         {
             w.WriteLine(JsonSerializer.Serialize(recent.Select(s => new
             {
                 sessionId = s.SessionId,
+                nickname = names.Get(s.SessionId),
                 folder = s.ProjectDir,
                 title = s.Title,
                 firstMessage = s.FirstPrompt,
@@ -207,6 +212,7 @@ public static class Cli
         {
             w.WriteLine();
             w.WriteLine($"  {Fmt.When(s.LastActive),-16} {Fmt.FolderName(s.ProjectDir)}{(running.Contains(s.SessionId) ? "  ·  running" : "")}");
+            if (names.Get(s.SessionId) is { } nick) w.WriteLine($"  {"",-16} name: {Fmt.Trim(nick, 100)}");
             if (s.Title != null) w.WriteLine($"  {"",-16} {Fmt.Trim(s.Title, 100)}");
             if ((s.LastPrompt ?? s.FirstPrompt) is { } lp) w.WriteLine($"  {"",-16} last: {Fmt.Trim(lp, 100)}");
             w.WriteLine($"  {"",-16} {s.ProjectDir}  ·  session {s.SessionId}");
@@ -250,7 +256,8 @@ public static class Cli
     {
         var now = DateTimeOffset.Now;
         var running = SessionQueries.GetRunning(new RunningScanner(), new SessionStore());
-        var (snap, skipped) = SessionQueries.BuildSnapshot(running, o.Name ?? SessionQueries.DefaultSnapshotName(now), o.Note, now);
+        var names = new NicknameStore();
+        var (snap, skipped) = SessionQueries.BuildSnapshot(running, o.Name ?? SessionQueries.DefaultSnapshotName(now), o.Note, now, names.Get);
         if (snap.Sessions.Count == 0)
         {
             err.WriteLine("SessionKeeper: no matched Claude Code sessions are running, so nothing was saved.");

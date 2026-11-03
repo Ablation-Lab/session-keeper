@@ -45,6 +45,9 @@ quotes, change them to single quotes first so the command line stays intact.
   *idle*, *starting* (just launched) and *unmatched* (a claude process that isn't in Claude Code's
   session registry, so it can't be resumed by ID).
 - The list includes the session you're running in.
+- **Names:** sessions the user has named in SessionKeeper show a `name:` line (or `nickname` in `--json`). Use
+  that name when you refer to them. Naming and starting new sessions happen in the app (right-click > Rename,
+  or **New session…**), not through this skill.
 - **Snapshots** include matched sessions only. Unmatched or still-starting processes are skipped and
   listed as such; say so when it happens.
 - The same session can show up under two PIDs if it's open in two terminals. Mention that, since two
