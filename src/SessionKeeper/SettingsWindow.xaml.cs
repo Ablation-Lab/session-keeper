@@ -20,21 +20,48 @@ public partial class SettingsWindow : Window
         UpdateStartupWarning();
 
         var settings = AppSettings.Load();
-        bool hasTerminal = Launcher.FindWindowsTerminal() != null;
-        OpenInTerminal.IsEnabled = hasTerminal;
-        TerminalMissingText.Visibility = hasTerminal ? Visibility.Collapsed : Visibility.Visible;
-        (settings.OpenIn == OpenMode.WindowsTerminalTab && hasTerminal ? OpenInTerminal : OpenInPowerShell).IsChecked = true;
-        ShowInstallNotice(settings);
+        (settings.OpenIn == OpenMode.WindowsTerminalTab ? OpenInTerminal : OpenInPowerShell).IsChecked = true;
+        OpenInTerminal.IsEnabled = false; // until the check below confirms Windows Terminal is installed
         _loading = false;
+        Loaded += async (_, _) => await ProbeAsync(settings);
     }
 
     private string? _repo;
 
-    /// <summary>Explains when this copy isn't the installed one (for example the build folder), and how to install.</summary>
-    private void ShowInstallNotice(AppSettings settings)
+    /// <summary>
+    /// The PATH search for wt.exe and the repository folder check can block (network drives), so they run off
+    /// the UI thread after the window is shown.
+    /// </summary>
+    private async Task ProbeAsync(AppSettings settings)
     {
-        if (InstallLocation.IsInstalledCopy) return;
-        _repo = InstallLocation.SourceRepo(settings, BuildInfo.Current);
+        try
+        {
+            var (hasTerminal, installed, repo) = await Task.Run(() =>
+            {
+                bool wt = Launcher.FindWindowsTerminal() != null;
+                bool inst = InstallLocation.IsInstalledCopy;
+                return (wt, inst, inst ? null : InstallLocation.SourceRepo(settings, BuildInfo.Current));
+            });
+            OpenInTerminal.IsEnabled = hasTerminal;
+            TerminalMissingText.Visibility = hasTerminal ? Visibility.Collapsed : Visibility.Visible;
+            if (!hasTerminal && OpenInTerminal.IsChecked == true)
+            {
+                _loading = true; // display only: the saved setting is left alone, as before
+                OpenInPowerShell.IsChecked = true;
+                _loading = false;
+            }
+            if (!installed) ShowInstallNotice(repo);
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+        }
+    }
+
+    /// <summary>Explains when this copy isn't the installed one (for example the build folder), and how to install.</summary>
+    private void ShowInstallNotice(string? repo)
+    {
+        _repo = repo;
         var folder = System.IO.Path.GetDirectoryName(_exe) ?? _exe;
         NotInstalledText.Text =
             $"It's running from {folder}. A build replaces that folder, so updates can fail while it's open, and " +

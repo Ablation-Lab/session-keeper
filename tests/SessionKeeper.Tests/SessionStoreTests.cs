@@ -30,6 +30,26 @@ public sealed class SessionStoreTests : IDisposable
     }
 
     [Fact]
+    public void DeletedTranscriptsAreDroppedFromTheCache()
+    {
+        Write(User(J("hello"), "2026-11-02T10:00:00Z"), Assistant("2026-11-02T10:00:05Z"));
+        var store = new SessionStore(_root);
+        var since = DateTimeOffset.Parse("2026-11-01T00:00:00Z");
+        Assert.Single(store.GetRecent(since));
+        Assert.Equal(1, store.CachedCount);
+
+        File.Delete(FilePath);
+        Assert.Empty(store.GetRecent(since));
+        Assert.Equal(0, store.CachedCount); // not listed any more and gone: evicted
+
+        Write(User(J("again"), "2026-11-02T11:00:00Z"), Assistant("2026-11-02T11:00:05Z"));
+        Assert.Equal("again", Assert.Single(store.GetRecent(since)).LastPrompt); // a new file with the same name is read fresh
+        File.Delete(FilePath);
+        Assert.Null(store.GetSessionFromFile(FilePath)); // a direct lookup of a deleted file also evicts it
+        Assert.Equal(0, store.CachedCount);
+    }
+
+    [Fact]
     public void EncodeMatchesClaudeConvention()
     {
         Assert.Equal("C--Projects", SessionStore.EncodeProjectDir(@"C:\Projects"));

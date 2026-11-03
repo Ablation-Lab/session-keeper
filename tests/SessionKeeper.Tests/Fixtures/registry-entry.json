@@ -1,0 +1,21 @@
+{
+  "pid": 4242,
+  "sessionId": "dddd4444-0000-4000-8000-000000000004",
+  "cwd": "C:\\Projects\\demo-app",
+  "startedAt": 1793000000000,
+  "procStart": "134374735985000000",
+  "version": "2.1.0",
+  "peerProtocol": 1,
+  "peerFeatures": ["example-feature"],
+  "kind": "interactive",
+  "entrypoint": "cli",
+  "pidDomain": "win32",
+  "asksForConvertedSkills": false,
+  "messagingSocketPath": "\\\\.\\pipe\\claude-example",
+  "name": "demo-app",
+  "nameSource": "derived",
+  "nameSince": 1793000000000,
+  "updatedAt": 1793000060000,
+  "status": "idle",
+  "statusUpdatedAt": 1793000060000
+}

@@ -189,13 +189,4 @@ public sealed class NamingTests : IDisposable
         Assert.Null(NewSessionWindow.CheckFolder("\"" + _dir + "\\\"", out var full)); // quotes and trailing slash tolerated
         Assert.Equal(_dir.TrimEnd('\\'), full);
     }
-
-    [Fact]
-    public void StartingANewSessionIsAGuardedUserAction()
-    {
-        var psi = Launcher.BuildPowerShellWindowStart(new LaunchItem(_dir, null, "x", "name"), "claude");
-        Assert.NotNull(LaunchGuard.Check(psi));
-        using (LaunchGuard.UserAction(LaunchGuard.NewSession))
-            Assert.Null(LaunchGuard.Check(psi));
-    }
 }

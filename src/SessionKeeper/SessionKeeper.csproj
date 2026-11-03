@@ -14,13 +14,19 @@
     <StartupObject>SessionKeeper.Program</StartupObject>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <!-- The one place the version is set. Bump on each change: patch = fixes, minor = features, major = breaking. -->
-    <Version>1.4.0</Version>
+    <Version>1.5.0</Version>
     <Product>SessionKeeper</Product>
     <Description>See, save and reopen Claude Code sessions.</Description>
     <!-- Reading another process's working directory relies on 64-bit PEB offsets. -->
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+  <!-- Release (what install.ps1 publishes): source paths in the exe and pdb (e.g. from [CallerFilePath]) don't
+       carry the folder, and so the user name, of whoever built it. The launch log only uses the file name. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <PathMap>$(MSBuildProjectDirectory)=/_/SessionKeeper</PathMap>
   </PropertyGroup>
 
   <ItemGroup>
@@ -60,10 +66,16 @@
           IgnoreStandardErrorWarningFormat="true">
       <Output TaskParameter="ExitCode" PropertyName="_SkDirtyExit" />
     </Exec>
+    <!-- A repository under the user profile is stored as %USERPROFILE%\…, so the exe doesn't carry the user name. -->
+    <PropertyGroup Condition="'$(_SkRepoExit)' == '0'">
+      <_SkRepoPath>$(_SkRepo.Trim().Replace('/', '\'))</_SkRepoPath>
+      <_SkProfile>$(USERPROFILE.TrimEnd('\'))</_SkProfile>
+      <_SkRepoPath Condition="'$(_SkProfile)' != '' and $(_SkRepoPath.ToLowerInvariant().StartsWith('$(_SkProfile.ToLowerInvariant())\'))">%25USERPROFILE%25$(_SkRepoPath.Substring($(_SkProfile.Length)))</_SkRepoPath>
+    </PropertyGroup>
     <ItemGroup>
       <AssemblyMetadata Include="BuildDate" Value="$([System.DateTime]::UtcNow.ToString('o'))" />
       <AssemblyMetadata Include="CommitHash" Value="$(_SkCommit.Trim())" Condition="'$(_SkCommitExit)' == '0'" />
-      <AssemblyMetadata Include="SourceRepo" Value="$(_SkRepo.Trim())" Condition="'$(_SkRepoExit)' == '0'" />
+      <AssemblyMetadata Include="SourceRepo" Value="$(_SkRepoPath)" Condition="'$(_SkRepoExit)' == '0'" />
       <AssemblyMetadata Include="SourceDirty" Value="true" Condition="'$(_SkDirtyExit)' == '1'" />
     </ItemGroup>
   </Target>

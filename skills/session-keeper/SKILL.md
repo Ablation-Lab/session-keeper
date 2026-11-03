@@ -2,15 +2,35 @@
 name: session-keeper
 description: Open SessionKeeper and use it to list running or recent Claude Code sessions, list saved snapshots, and save a snapshot of the running sessions with an optional note (Windows). Use when the user asks to open or show SessionKeeper; list, show or check their running, open or active Claude Code sessions (or which ones are working, idle or waiting for input); list recent sessions from today or the last few days; save, snapshot or bookmark their open sessions (for example at the end of the day, "with the note X"); or list their saved snapshots. Restoring or reopening sessions is done in the app, not by this skill.
 argument-hint: [open | list | recent [days] | snapshots | snapshot "note"]
-allowed-tools: Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" *) PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" *)
+allowed-tools:
+  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" open)
+  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --list)
+  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --list *)
+  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --recent)
+  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --recent *)
+  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --snapshots)
+  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --snapshots *)
+  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --help)
+  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --version)
+  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" open)
+  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --list)
+  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --list *)
+  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --recent)
+  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --recent *)
+  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --snapshots)
+  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --snapshots *)
+  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --help)
+  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --version)
 ---
 
 # SessionKeeper
 
 SessionKeeper is a small Windows app that shows which Claude Code sessions are running, saves them as
-named snapshots, and reopens them later in Windows Terminal tabs. This skill drives it through its
-command-line options, so you never need to click through the UI. Everything here is read-only except
-saving a snapshot, which writes one JSON file to the user's snapshots folder.
+named snapshots, and reopens them later, each in its own PowerShell window (or as Windows Terminal tabs,
+if the user chose that in its Settings). This skill drives it through its command-line options, so you
+never need to click through the UI. Everything here is read-only except two options that write a file:
+`--snapshot` (one JSON file in the user's snapshots folder) and `--install-shortcut` (a Start menu
+shortcut). Those two ask the user for approval before they run; the read-only ones don't.
 
 ## Running it
 
@@ -42,8 +62,9 @@ quotes, change them to single quotes first so the command line stays intact.
 - **Exit codes:** 0 means OK; 1 means nothing to do (for example no matched sessions to snapshot) or an
   error, with the reason on stderr; 2 means a usage error; 3 means SessionKeeper isn't installed.
 - **Statuses:** *working* (busy), *needs input* (waiting on the user, for example a permission prompt),
-  *idle*, *starting* (just launched) and *unmatched* (a claude process that isn't in Claude Code's
-  session registry, so it can't be resumed by ID).
+  *idle*, *starting* (just launched), *unmatched* (a claude process that isn't in Claude Code's
+  session registry, so it can't be resumed by ID) and, rarely, *unknown* or another word: a status Claude
+  Code reported that SessionKeeper doesn't recognise (shown as reported).
 - The list includes the session you're running in.
 - **Names:** sessions the user has named in SessionKeeper show a `name:` line (or `nickname` in `--json`). Use
   that name when you refer to them. Naming and starting new sessions happen in the app (right-click > Rename,
@@ -59,7 +80,7 @@ they're needed to tell sessions apart.
 
 ## Things this skill doesn't do
 
-- **Restore or reopen sessions.** That opens terminal tabs, so the user does it in the app (Snapshots
+- **Restore or reopen sessions.** That opens new windows (or tabs), so the user does it in the app (Snapshots
   tab → Restore, or Recent tab → Reopen selected). Offer to `open` the app.
 - **Rename or delete snapshots.** Those are also done in the app.
 

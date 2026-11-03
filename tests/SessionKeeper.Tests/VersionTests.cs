@@ -22,6 +22,16 @@ public sealed class BuildInfoTests
     }
 
     [Fact]
+    public void ARepoUnderTheProfileIsEmbeddedWithoutTheUserName()
+    {
+        Assert.Equal(@"D:\Home\someone\src\app", BuildInfo.ExpandRepo(@"%USERPROFILE%\src\app", @"D:\Home\someone\"));
+        Assert.Equal(@"C:\Src\app", BuildInfo.ExpandRepo(@"C:\Src\app", @"D:\Home\someone"));
+        Assert.Equal(@"C:\%OTHER%\app", BuildInfo.ExpandRepo(@"C:\%OTHER%\app", @"D:\Home\someone")); // only the one token
+        var embedded = BuildInfo.FromValues("1.0.0", Meta(("SourceRepo", @"%USERPROFILE%\src\app")));
+        Assert.Equal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "src", "app"), embedded.SourceRepo);
+    }
+
+    [Fact]
     public void MissingOrUntrustedValuesAreLeftOut()
     {
         var b = BuildInfo.FromValues("1.0.0", Meta(("CommitHash", "not-a-hash; rm -rf"), ("BuildDate", "garbage"), ("SourceDirty", "true")));
@@ -110,10 +120,10 @@ public sealed class UpdateCheckTests : IDisposable
 
     private static BuildInfo Build(string? commit) => new("1.0.0", commit, DateTimeOffset.Now, null, false);
 
-    [Fact]
+    [SkippableFact]
     public void CountsOnlyNewerCommitsThatTouchTheAppSource()
     {
-        if (_git == null) return; // git not installed: nothing to test against
+        Skip.If(_git == null, "git is not installed: nothing to test against.");
         Directory.CreateDirectory(_root);
         Git("init", "-q");
         var built = Commit("src/SessionKeeper/a.cs", "1");

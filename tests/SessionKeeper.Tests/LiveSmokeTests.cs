@@ -10,10 +10,10 @@ namespace SessionKeeper.Tests;
 /// </summary>
 public sealed class LiveSmokeTests(ITestOutputHelper output)
 {
-    [Fact]
+    [SkippableFact]
     public void LiveSmoke()
     {
-        if (Environment.GetEnvironmentVariable("SK_LIVE") != "1") return;
+        Skip.IfNot(Environment.GetEnvironmentVariable("SK_LIVE") == "1", "Reads the real ~/.claude data; set SK_LIVE=1 to run.");
 
         var sw = Stopwatch.StartNew();
         var running = new RunningScanner().Scan();

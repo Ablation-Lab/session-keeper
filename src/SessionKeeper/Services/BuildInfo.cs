@@ -38,7 +38,20 @@ public sealed record BuildInfo(string Version, string? Commit, DateTimeOffset? B
         var commit = Get("CommitHash");
         if (commit != null && !IsHexCommit(commit)) commit = null; // never trust anything but a hex hash
         DateTimeOffset? date = DateTimeOffset.TryParse(Get("BuildDate"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var d) ? d : null;
-        return new BuildInfo(version, commit, date, Get("SourceRepo"), string.Equals(Get("SourceDirty"), "true", StringComparison.OrdinalIgnoreCase));
+        return new BuildInfo(version, commit, date, ExpandRepo(Get("SourceRepo")), string.Equals(Get("SourceDirty"), "true", StringComparison.OrdinalIgnoreCase));
+    }
+
+    internal const string ProfileToken = "%USERPROFILE%";
+
+    /// <summary>
+    /// The build stores a repository under the user profile as "%USERPROFILE%\…", so the exe doesn't carry
+    /// the user name. Only that one token is expanded; anything else is used as written.
+    /// </summary>
+    internal static string? ExpandRepo(string? repo, string? profile = null)
+    {
+        if (repo == null || !repo.StartsWith(ProfileToken, StringComparison.OrdinalIgnoreCase)) return repo;
+        profile ??= Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return string.IsNullOrEmpty(profile) ? null : profile.TrimEnd('\\') + repo[ProfileToken.Length..];
     }
 
     public static bool IsHexCommit(string s) => s.Length is >= 7 and <= 64 && s.All(Uri.IsHexDigit);

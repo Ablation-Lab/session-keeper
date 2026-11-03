@@ -76,11 +76,17 @@ public sealed class LauncherTests
         psi.Environment["CLAUDE_CODE_SESSION_ID"] = "abc";
         psi.Environment["CLAUDE_CONFIG_DIR"] = @"D:\cc";
         psi.Environment["CLAUDE_CODE_USE_BEDROCK"] = "1";
-        Launcher.CleanEnvironment(psi);
+        psi.Environment["CLAUDE_CODE_SSE_PORT"] = "1234";  // session-scoped, but set persistently by the user: kept
+        psi.Environment["CLAUDE_CODE_FUTURE_SESSION_THING"] = "x";
+        var kept = Launcher.CleanEnvironment(psi, key => key == "CLAUDE_CODE_SSE_PORT");
         Assert.False(psi.Environment.ContainsKey("CLAUDECODE"));
         Assert.False(psi.Environment.ContainsKey("CLAUDE_CODE_SESSION_ID"));
+        Assert.Equal("1234", psi.Environment["CLAUDE_CODE_SSE_PORT"]);
         Assert.Equal(@"D:\cc", psi.Environment["CLAUDE_CONFIG_DIR"]);
         Assert.Equal("1", psi.Environment["CLAUDE_CODE_USE_BEDROCK"]);
+        // Unknown non-persistent CLAUDE* variables pass through but are reported (by name) for the log.
+        Assert.Equal(new[] { "CLAUDE_CODE_FUTURE_SESSION_THING", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CONFIG_DIR" },
+            kept.Where(k => k is "CLAUDE_CODE_FUTURE_SESSION_THING" or "CLAUDE_CODE_USE_BEDROCK" or "CLAUDE_CONFIG_DIR" or "CLAUDE_CODE_SSE_PORT"));
     }
 
     [Fact]
@@ -155,6 +161,10 @@ public sealed class LauncherTests
     {
         Assert.Equal("ab cd", Launcher.SafeTitle("a;b \"cd\""));
         Assert.Equal("claude", Launcher.SafeTitle(";;;"));
+        // A leading '-' would be read by wt as an option.
+        Assert.Equal("_--help", Launcher.SafeTitle("--help"));
+        Assert.Equal("_-d x", Launcher.SafeTitle(" ;-d x"));
+        Assert.Contains("new-tab --title _-x ", Launcher.BuildTabArgs(new LaunchItem(@"C:\x", Id, "x", "-x"), "claude"));
     }
 
     [Fact]

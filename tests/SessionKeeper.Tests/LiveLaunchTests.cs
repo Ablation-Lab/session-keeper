@@ -11,10 +11,10 @@ namespace SessionKeeper.Tests;
 /// </summary>
 public sealed class LiveLaunchTests(ITestOutputHelper output)
 {
-    [Fact]
+    [SkippableFact]
     public void LiveLaunch()
     {
-        if (Environment.GetEnvironmentVariable("SK_LAUNCH") != "1") return;
+        Skip.IfNot(Environment.GetEnvironmentVariable("SK_LAUNCH") == "1", "Opens real terminal tabs; set SK_LAUNCH=1 to run.");
 
         var baseDir = Path.Combine(Path.GetTempPath(), "sk-launch-test");
         var a = Path.Combine(baseDir, "plain folder");

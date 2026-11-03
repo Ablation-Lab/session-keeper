@@ -64,7 +64,13 @@ public sealed class SessionStore
         return file == null ? null : GetSessionFromFile(file);
     }
 
-    public SessionInfo? GetSessionFromFile(string file)
+    public SessionInfo? GetSessionFromFile(string file) => GetSessionFromFile(file, null);
+
+    /// <summary>
+    /// <paramref name="known"/> is the file's FileInfo when the caller already has it from a directory
+    /// enumeration, which saves a second stat per transcript on every refresh.
+    /// </summary>
+    private SessionInfo? GetSessionFromFile(string file, FileInfo? known)
     {
         lock (_gate)
         {
@@ -73,11 +79,15 @@ public sealed class SessionStore
                 st = new ParseState(file);
                 _cache[file] = st;
             }
-            st.Update(_carry);
+            st.Update(_carry, known);
             if (_carry.Capacity > 1024 * 1024) _carry = new(); // don't pin a multi-MB buffer all day
+            if (st.Missing) { _cache.Remove(file); return null; } // deleted: don't keep its parse state
             return st.ToInfo();
         }
     }
+
+    /// <summary>Number of transcripts with cached parse state (for tests).</summary>
+    internal int CachedCount { get { lock (_gate) return _cache.Count; } }
 
     /// <summary>Sessions with activity since <paramref name="sinceUtc"/>, newest first.</summary>
     public List<SessionInfo> GetRecent(DateTimeOffset sinceUtc, CancellationToken ct = default)
@@ -89,6 +99,7 @@ public sealed class SessionStore
         try { dirs = Directory.EnumerateDirectories(ProjectsRoot).ToList(); }
         catch (Exception) { return result; }
 
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var dir in dirs)
         {
             IEnumerable<FileInfo> files;
@@ -98,15 +109,28 @@ public sealed class SessionStore
             foreach (var fi in files)
             {
                 ct.ThrowIfCancellationRequested();
+                seen.Add(fi.FullName);
                 // mtime >= last record time, so this pre-filter never drops a qualifying session.
                 if (fi.LastWriteTimeUtc < sinceUtc.UtcDateTime) continue;
                 if (!IsValidSessionId(Path.GetFileNameWithoutExtension(fi.Name))) continue;
-                var info = GetSessionFromFile(fi.FullName);
+                var info = GetSessionFromFile(fi.FullName, fi);
                 if (info != null && info.LastActive >= sinceUtc) result.Add(info);
             }
         }
+        EvictDeleted(seen);
         result.Sort((a, b) => b.LastActive.CompareTo(a.LastActive));
         return result;
+    }
+
+    /// <summary>Drops cached parse state for transcripts that have been deleted since they were read.</summary>
+    private void EvictDeleted(HashSet<string> seen)
+    {
+        lock (_gate)
+        {
+            // Not seen in this listing (or its folder couldn't be listed) and really gone: forget it.
+            foreach (var path in _cache.Keys.Where(k => !seen.Contains(k)).ToList())
+                if (!File.Exists(path)) _cache.Remove(path);
+        }
     }
 
     // ------------------------------------------------------------------ parsing
@@ -134,12 +158,14 @@ public sealed class SessionStore
             _hasConversation = false;
         }
 
-        public void Update(ArrayBufferWriter<byte> carry)
+        public bool Missing => _missing;
+
+        public void Update(ArrayBufferWriter<byte> carry, FileInfo? known = null)
         {
             FileInfo fi;
             try
             {
-                fi = new FileInfo(_path);
+                fi = known ?? new FileInfo(_path);
                 if (!fi.Exists) { _missing = true; return; }
             }
             catch (Exception) { _missing = true; return; }

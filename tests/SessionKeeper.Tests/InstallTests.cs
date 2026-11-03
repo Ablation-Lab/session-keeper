@@ -39,15 +39,6 @@ public sealed class InstallTests : IDisposable
     }
 
     [Fact]
-    public void OpeningTheRepoFolderIsAnExplicitUserAction()
-    {
-        var psi = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"), _dir);
-        Assert.NotNull(LaunchGuard.Check(psi));
-        using (LaunchGuard.UserAction(LaunchGuard.OpenRepoFolder))
-            Assert.Null(LaunchGuard.Check(psi));
-    }
-
-    [Fact]
     public void InstallCmdRunsTheScriptWithBypassAndPauses()
     {
         var bytes = File.ReadAllBytes(Path.Combine(RepoRoot(), "install.cmd"));
@@ -60,7 +51,9 @@ public sealed class InstallTests : IDisposable
         Assert.Contains("exit /b %RC%", text);
     }
 
-    private static (int Code, string Out) RunPowerShell(params string[] args)
+    private static (int Code, string Out) RunPowerShell(params string[] args) => RunPowerShell(null, args);
+
+    private static (int Code, string Out) RunPowerShell(IDictionary<string, string>? env, params string[] args)
     {
         var psi = new ProcessStartInfo(Launcher.PowerShellPath)
         {
@@ -69,6 +62,7 @@ public sealed class InstallTests : IDisposable
             StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8,
         };
         foreach (var a in args) psi.ArgumentList.Add(a);
+        if (env != null) foreach (var (k, v) in env) psi.Environment[k] = v;
         using var p = Process.Start(psi)!;
         var stdout = p.StandardOutput.ReadToEndAsync();
         var stderr = p.StandardError.ReadToEndAsync();
@@ -91,9 +85,18 @@ public sealed class InstallTests : IDisposable
     public void InstallRefusesProgramFilesBeforeBuildingAnything()
     {
         var script = Path.Combine(RepoRoot(), "install.ps1");
-        var target = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "SessionKeeper");
+        // The script's Program Files variables point at a temp folder, so even if the check regressed,
+        // nothing would be installed under the real Program Files.
+        var fakeProgramFiles = Path.Combine(_dir, "Program Files");
+        var env = new Dictionary<string, string>
+        {
+            ["ProgramFiles"] = fakeProgramFiles,
+            ["ProgramW6432"] = fakeProgramFiles,
+            ["ProgramFiles(x86)"] = Path.Combine(_dir, "Program Files (x86)"),
+        };
+        var target = Path.Combine(fakeProgramFiles, "SessionKeeper");
         var sw = Stopwatch.StartNew();
-        var (code, output) = RunPowerShell("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+        var (code, output) = RunPowerShell(env, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
             "-File", script, "-Destination", target, "-NoStartMenu", "-NoSkill");
         Assert.NotEqual(0, code);
         Assert.Contains("Program Files", output);

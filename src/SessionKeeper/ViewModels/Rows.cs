@@ -230,6 +230,45 @@ public sealed class CurrentRow : Observable, INameableRow
 /// <summary>A row on the "Recent" tab.</summary>
 public sealed class RecentRow : Observable, INameableRow
 {
+    /// <summary>
+    /// Brings <paramref name="rows"/> in line with <paramref name="fresh"/> in place (keyed by session ID), so the
+    /// timed refresh doesn't reset scroll position or flicker. A row whose details haven't changed keeps its
+    /// object (only the running badge and name are updated); a changed one is replaced, keeping its tick.
+    /// Calls <paramref name="added"/>/<paramref name="removed"/> for every row object put in or taken out.
+    /// </summary>
+    public static void Sync(System.Collections.ObjectModel.ObservableCollection<RecentRow> rows, IReadOnlyList<RecentRow> fresh,
+        Action<RecentRow> added, Action<RecentRow> removed)
+    {
+        var freshIds = fresh.Select(r => r.Info.SessionId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        for (int i = rows.Count - 1; i >= 0; i--)
+            if (!freshIds.Contains(rows[i].Info.SessionId)) { removed(rows[i]); rows.RemoveAt(i); }
+
+        for (int target = 0; target < fresh.Count; target++)
+        {
+            var row = fresh[target];
+            int existing = -1;
+            for (int j = target; j < rows.Count; j++)
+                if (string.Equals(rows[j].Info.SessionId, row.Info.SessionId, StringComparison.OrdinalIgnoreCase)) { existing = j; break; }
+
+            if (existing < 0) { rows.Insert(target, row); added(row); continue; }
+            if (existing != target) rows.Move(existing, target);
+            var old = rows[target];
+            if (old.Info == row.Info && old.FolderMissing == row.FolderMissing)
+            {
+                old.IsRunning = row.IsRunning;
+                if (old.Nickname != row.Nickname) old.Nickname = row.Nickname;
+            }
+            else
+            {
+                row.IsChecked = old.IsChecked;
+                removed(old);
+                rows[target] = row;
+                added(row);
+            }
+        }
+    }
+
+
     private bool _isChecked;
     private bool _isRunning;
     private string? _nickname;

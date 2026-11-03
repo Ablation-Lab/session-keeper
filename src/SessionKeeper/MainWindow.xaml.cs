@@ -30,11 +30,11 @@ public partial class MainWindow : Window
     private bool _pendingWatchRunning;
     private sealed record PendingName(string Folder, DateTimeOffset Since, string Name);
     private bool _badgeRefreshBusy;
-    private List<RecentRow> _recentRows = new();
+    private readonly ObservableCollection<RecentRow> _recentRows = new();
     private Task? _currentRefresh;
-    private bool _recentLoaded, _launching;
+    private bool _recentLoaded, _recentLoading, _launching;
     private CancellationTokenSource? _recentCts;
-    private int _snapshotDetailsVersion;
+    private int _snapshotDetailsVersion, _snapshotListVersion;
     private string _currentStatus = "", _recentStatus = "", _snapshotStatus = "";
     private DateTime _lastCurrentRefresh = DateTime.MinValue;
 
@@ -42,6 +42,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         CurrentList.ItemsSource = _currentRows;
+        RecentList.ItemsSource = _recentRows;
         ShowVersion(BuildInfo.Current, null);
         ShowRuntime(DotNetRuntime.Current, null, null);
         _timer.Tick += async (_, _) => await AutoRefreshAsync();
@@ -56,6 +57,7 @@ public partial class MainWindow : Window
         {
             if (DateTime.UtcNow - _lastCurrentRefresh <= TimeSpan.FromSeconds(3)) return;
             if (TabCurrent.IsChecked == true) await RefreshCurrentAsync();
+            else if (TabRecent.IsChecked == true && _recentLoaded) await LoadRecentAsync(quiet: true);
             else await RefreshRunningBadgesAsync();
         };
         Closed += (_, _) => { _timer.Stop(); _recentCts?.Cancel(); };
@@ -79,7 +81,7 @@ public partial class MainWindow : Window
 
         if (cur) _ = RefreshCurrentAsync();
         if (rec && !_recentLoaded) _ = LoadRecentAsync();
-        else if (rec) _ = RefreshRunningBadgesAsync();
+        else if (rec) _ = LoadRecentAsync(quiet: true);
         if (snap) _ = LoadSnapshotsAsync(refreshRunning: true);
         UpdateStatus();
     }
@@ -178,7 +180,9 @@ public partial class MainWindow : Window
         // Only scan while the user can actually see the window.
         if (WindowState == WindowState.Minimized || !IsVisible) return;
         if (TabCurrent.IsChecked == true) await RefreshCurrentAsync();
-        else await RefreshRunningBadgesAsync(); // Recent / Snapshots: keep the "running" badges current
+        // Recent: new, changed and closed sessions appear in place (no "Loading…", ticks and scroll kept).
+        else if (TabRecent.IsChecked == true && _recentLoaded) await LoadRecentAsync(quiet: true);
+        else await RefreshRunningBadgesAsync(); // Snapshots: keep the "running" badges current
     }
 
     /// <summary>
@@ -294,17 +298,26 @@ public partial class MainWindow : Window
         _ = LoadRecentAsync();
     }
 
-    private async Task LoadRecentAsync()
+    /// <summary>
+    /// Loads the Recent list. <paramref name="quiet"/> is the timed refresh: it skips if a load is already
+    /// running, shows no "Loading…", and leaves the list as it was if it fails.
+    /// </summary>
+    private async Task LoadRecentAsync(bool quiet = false)
     {
+        if (quiet && _recentLoading) return;
         using var noLaunches = LaunchGuard.Background();
         _recentCts?.Cancel();
         var cts = new CancellationTokenSource();
         _recentCts = cts;
         _recentLoaded = true;
+        _recentLoading = true;
 
         var since = DateTimeOffset.Now - RecentWindow;
-        _recentStatus = "Loading…";
-        UpdateStatus();
+        if (!quiet)
+        {
+            _recentStatus = "Loading…";
+            UpdateStatus();
+        }
 
         try
         {
@@ -319,20 +332,18 @@ public partial class MainWindow : Window
 
             var runningSet = WithRecentlyLaunched(running);
             _runningIds = runningSet;
-            // Read ticks now (not before the await) so boxes ticked while loading are kept.
-            var keepChecked = _recentRows.Where(r => r.IsChecked).Select(r => r.Info.SessionId).ToHashSet();
-            foreach (var old in _recentRows) old.PropertyChanged -= RecentRow_PropertyChanged;
-            _recentRows = rows.Select(x => new RecentRow
+            // Synced in place after the await, so boxes ticked while loading are kept.
+            var fresh = rows.Select(x => new RecentRow
             {
                 Info = x.First,
                 FolderMissing = x.Second,
                 IsRunning = runningSet.Contains(x.First.SessionId),
-                IsChecked = keepChecked.Contains(x.First.SessionId),
                 Nickname = _names.Get(x.First.SessionId),
             }).ToList();
-            foreach (var r in _recentRows) r.PropertyChanged += RecentRow_PropertyChanged;
+            RecentRow.Sync(_recentRows, fresh,
+                added: r => r.PropertyChanged += RecentRow_PropertyChanged,
+                removed: r => r.PropertyChanged -= RecentRow_PropertyChanged);
 
-            RecentList.ItemsSource = _recentRows;
             RecentEmpty.Visibility = _recentRows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             _recentStatus = $"{_recentRows.Count} session{(_recentRows.Count == 1 ? "" : "s")} · updated {DateTime.Now:HH:mm:ss}";
         }
@@ -343,8 +354,15 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             App.Log(ex);
-            _recentLoaded = false; // retry next time the tab is shown
-            _recentStatus = "Load failed: " + ex.Message;
+            if (!quiet)
+            {
+                _recentLoaded = false; // retry next time the tab is shown
+                _recentStatus = "Load failed: " + ex.Message;
+            }
+        }
+        finally
+        {
+            if (cts == _recentCts) _recentLoading = false; // a newer load still running keeps the flag
         }
         UpdateRecentSelection();
         UpdateStatus();
@@ -404,9 +422,11 @@ public partial class MainWindow : Window
     private async Task LoadSnapshotsAsync(string? selectPath = null, bool refreshRunning = false)
     {
         selectPath ??= (SnapshotList.SelectedItem as SnapshotListItem)?.File.Path;
+        int version = ++_snapshotListVersion;
         List<SnapshotFile> files;
         bool failed = false;
-        try { files = _snapshots.List(); }
+        // Off the UI thread: reads and parses every snapshot file (the folder may be slow or on a network drive).
+        try { files = await Task.Run(() => _snapshots.List()); }
         catch (Exception ex)
         {
             App.Log(ex);
@@ -414,6 +434,7 @@ public partial class MainWindow : Window
             failed = true;
             _snapshotStatus = "Could not read snapshots: " + ex.Message;
         }
+        if (version != _snapshotListVersion) return; // a newer load has started
         var items = files.Select(f => new SnapshotListItem { File = f }).ToList();
         SnapshotList.ItemsSource = items;
         SnapshotsEmpty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -671,7 +692,8 @@ public partial class MainWindow : Window
             // (or resume in the wrong place).
             var checks = await Task.Run(() => items.Select(it =>
             {
-                if (!FolderProbe.Exists(it.ProjectDir)) return (it, (string?)$"the folder no longer exists ({it.ProjectDir})");
+                if (string.IsNullOrWhiteSpace(it.ProjectDir)) return (it, (string?)"no folder recorded");
+                if (!FolderProbe.Exists(it.ProjectDir)) return (it, $"the folder no longer exists ({it.ProjectDir})");
                 if (it.SessionId == null) return (it, null);
                 var file = _store.FindFile(it.SessionId, it.ProjectDir);
                 if (file == null) return (it, "its conversation file was not found, so it can't be resumed");

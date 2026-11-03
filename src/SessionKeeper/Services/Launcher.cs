@@ -4,7 +4,6 @@ using System.Text;
 
 namespace SessionKeeper.Services;
 
-/// <summary>One terminal tab to open. SessionId null = start a fresh claude in the folder.</summary>
 /// <summary>
 /// One window/tab to open. SessionId null = start a fresh claude in the folder. Title (the session's nickname)
 /// becomes the window/tab title and is kept there (Claude's own title updates are switched off for it).
@@ -246,7 +245,9 @@ public static class Launcher
                 sb.Append(ch);
         }
         var t = sb.ToString().Trim();
-        return t.Length == 0 ? "claude" : t;
+        if (t.Length == 0) return "claude";
+        // wt would read a leading '-' as one of its own options ("--title -d x" or "--help"), so prefix it.
+        return t[0] == '-' ? "_" + t : t;
     }
 
     /// <summary>
@@ -344,13 +345,30 @@ public static class Launcher
 
     internal static void CleanEnvironment(ProcessStartInfo psi)
     {
-        foreach (var key in SessionScopedVariables)
-        {
-            if (!psi.Environment.ContainsKey(key)) continue;
-            bool persistent =
-                Environment.GetEnvironmentVariable(key, EnvironmentVariableTarget.User) != null ||
-                Environment.GetEnvironmentVariable(key, EnvironmentVariableTarget.Machine) != null;
-            if (!persistent) psi.Environment.Remove(key);
-        }
+        var kept = CleanEnvironment(psi, IsPersistent);
+        // Other CLAUDE* variables pass through (they may be deliberate per-shell settings such as
+        // CLAUDE_CODE_USE_BEDROCK), but a new session-scoped one in a future Claude Code would too, so their
+        // names (never values) are logged to make that visible.
+        if (kept.Count > 0)
+            LaunchGuard.LogEvent("ENV", "passed through non-persistent CLAUDE* variables: " + string.Join(", ", kept));
     }
+
+    /// <summary>
+    /// Removes the session-scoped variables that aren't persistent, and returns the names of any other
+    /// non-persistent CLAUDE* variables left in place.
+    /// </summary>
+    internal static List<string> CleanEnvironment(ProcessStartInfo psi, Func<string, bool> isPersistent)
+    {
+        foreach (var key in SessionScopedVariables)
+            if (psi.Environment.ContainsKey(key) && !isPersistent(key)) psi.Environment.Remove(key);
+        return psi.Environment.Keys
+            .Where(k => k.StartsWith("CLAUDE", StringComparison.OrdinalIgnoreCase) && !isPersistent(k) &&
+                        !SessionScopedVariables.Contains(k, StringComparer.OrdinalIgnoreCase))
+            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static bool IsPersistent(string key) =>
+        Environment.GetEnvironmentVariable(key, EnvironmentVariableTarget.User) != null ||
+        Environment.GetEnvironmentVariable(key, EnvironmentVariableTarget.Machine) != null;
 }

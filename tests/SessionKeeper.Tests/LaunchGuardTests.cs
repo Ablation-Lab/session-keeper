@@ -21,6 +21,31 @@ public sealed class LaunchGuardTests : IDisposable
     private string LogText() =>
         Directory.Exists(_logs) ? string.Concat(Directory.GetFiles(_logs, "launches-*.log").Select(File.ReadAllText)) : "";
 
+    // ------------------------------------------------------------------ each button's user action
+    // These open real user-action scopes, which log; they live here so the log goes to the temp folder.
+
+    [Theory]
+    [InlineData(LaunchGuard.Open, null)]          // Open / double-click: a PowerShell window via conhost
+    [InlineData(LaunchGuard.NewSession, "name")]  // New session, with a name
+    public void PowerShellWindowLaunchesAreAllowedOnlyInsideTheirUserAction(string action, string? title)
+    {
+        var psi = Launcher.BuildPowerShellWindowStart(new LaunchItem(@"C:\x", "aaaa1111-0000-4000-8000-000000000001", "x", title), "claude");
+        Assert.NotNull(LaunchGuard.Check(psi)); // no user action: refused
+        using (LaunchGuard.UserAction(action))
+            Assert.Null(LaunchGuard.Check(psi));
+        Assert.Contains("action=" + action, LogText()); // logged to the test folder, not the real log
+    }
+
+    [Fact]
+    public void OpeningTheRepoFolderIsAnExplicitUserAction()
+    {
+        var psi = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"), Path.GetTempPath());
+        Assert.NotNull(LaunchGuard.Check(psi));
+        using (LaunchGuard.UserAction(LaunchGuard.OpenRepoFolder))
+            Assert.Null(LaunchGuard.Check(psi));
+        Assert.Contains("action=" + LaunchGuard.OpenRepoFolder, LogText());
+    }
+
     [Fact]
     public void RefusesOutsideAUserAction()
     {
