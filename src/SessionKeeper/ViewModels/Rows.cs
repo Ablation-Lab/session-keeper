@@ -58,6 +58,33 @@ internal static class Fmt
     }
 
     public static string ShortId(string? id) => string.IsNullOrEmpty(id) ? "" : id.Length > 8 ? id[..8] : id;
+
+    // Titles Claude Code generates for resumed or empty conversations; they don't identify anything.
+    private static readonly System.Text.RegularExpressions.Regex GenericTitle = new(
+        @"^(continu(e|es|ed|ing|ation)( of)?|resum(e|ed|es|ing)|previous|prior|new|untitled|empty)\b.*\b(session|conversation|chat|work)s?$|" +
+        @"^(session|conversation|chat|untitled|new chat|claude code( session)?)$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>True when a title is missing, generic ("Continuing previous session") or just the folder name.</summary>
+    public static bool IsGenericTitle(string? title, string? dir = null)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return true;
+        var t = title.Trim().TrimEnd('.', '!', '…').Trim();
+        if (t.Length == 0 || GenericTitle.IsMatch(t)) return true;
+        return dir != null && string.Equals(t, FolderName(dir), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>The bold label: the session title, or the folder name when the title doesn't identify the session.</summary>
+    public static string MainLabel(string? title, string? dir) => IsGenericTitle(title, dir) ? FolderName(dir) : title!.Trim();
+
+    /// <summary>The grey text: the folder name, or its full path when the folder name is already the main label.</summary>
+    public static string SecondaryText(string? title, string? dir) =>
+        IsGenericTitle(title, dir) ? (string.IsNullOrEmpty(dir) ? "" : dir) : FolderName(dir);
+
+    /// <summary>First tooltip lines: label, then the short session ID to tell look-alike rows apart.</summary>
+    public static string TooltipHeader(string? title, string? dir, string? sessionId) =>
+        MainLabel(title, dir) + (string.IsNullOrEmpty(sessionId) ? "" : "\nSession " + ShortId(sessionId) + "  (" + sessionId + ")") +
+        "\n" + (dir ?? "(folder unknown)");
 }
 
 internal static class Brushes2
@@ -112,8 +139,10 @@ public sealed class CurrentRow : Observable
     public bool FolderMissing => _folderMissing;
     public Visibility MissingVisibility => FolderMissing ? Visibility.Visible : Visibility.Collapsed;
 
-    public string TitleText => Running.Name ?? Info?.Title ?? "";
-    public Visibility TitleVisibility => TitleText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    private string? Title => Running.Name ?? Info?.Title;
+    public string MainLabel => Fmt.MainLabel(Title, ProjectDir);
+    public string SecondaryText => Fmt.SecondaryText(Title, ProjectDir);
+    public Visibility SecondaryVisibility => SecondaryText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>Only a matched session with a conversation file can be resumed by ID.</summary>
     public bool CanOpen => ProjectDir != null && SessionId != null && Info != null;
@@ -156,9 +185,7 @@ public sealed class CurrentRow : Observable
     {
         get
         {
-            var lines = new List<string> { ProjectDir ?? "(folder unknown)" };
-            if (Info?.Title is { } t) lines.Add("Title: " + t);
-            if (SessionId != null) lines.Add("Session: " + SessionId);
+            var lines = new List<string> { Fmt.TooltipHeader(Title, ProjectDir, SessionId) };
             lines.Add("PID: " + Running.Pid + (Running.StartedAt is { } s ? "   started " + Fmt.When(s) : ""));
             if (Info?.LastPrompt is { } lp) lines.Add("Last message: " + Fmt.Trim(lp, 300));
             if (Running.Note != null) lines.Add(Running.Note);
@@ -182,8 +209,9 @@ public sealed class RecentRow : Observable
     public bool FolderMissing { get; init; }
     public Visibility MissingVisibility => FolderMissing ? Visibility.Visible : Visibility.Collapsed;
     public Visibility RunningVisibility => IsRunning ? Visibility.Visible : Visibility.Collapsed;
-    public string TitleText => Info.Title ?? "";
-    public Visibility TitleVisibility => TitleText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public string MainLabel => Fmt.MainLabel(Info.Title, Info.ProjectDir);
+    public string SecondaryText => Fmt.SecondaryText(Info.Title, Info.ProjectDir);
+    public Visibility SecondaryVisibility => SecondaryText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     public string Summary => Fmt.Trim(Info.LastPrompt ?? Info.FirstPrompt, 160);
     public string WhenText => Fmt.When(Info.LastActive);
     public string ShortId => Fmt.ShortId(Info.SessionId);
@@ -196,8 +224,7 @@ public sealed class RecentRow : Observable
     {
         get
         {
-            var lines = new List<string> { Info.ProjectDir ?? "(folder unknown)", "Session: " + Info.SessionId };
-            if (Info.Title != null) lines.Add("Title: " + Info.Title);
+            var lines = new List<string> { Fmt.TooltipHeader(Info.Title, Info.ProjectDir, Info.SessionId) };
             if (Info.Started is { } s) lines.Add("Started: " + Fmt.When(s));
             lines.Add("Last active: " + Fmt.When(Info.LastActive));
             if (Info.FirstPrompt != null) lines.Add("First message: " + Fmt.Trim(Info.FirstPrompt, 300));
@@ -228,9 +255,12 @@ public sealed class SnapshotSessionRow
     public bool FolderMissing { get; init; }
     public Visibility MissingVisibility => FolderMissing ? Visibility.Visible : Visibility.Collapsed;
     public Visibility RunningVisibility => IsRunning ? Visibility.Visible : Visibility.Collapsed;
+    public string MainLabel => Fmt.MainLabel(Session.Title, Session.ProjectDir);
+    public string SecondaryText => Fmt.SecondaryText(Session.Title, Session.ProjectDir);
+    public Visibility SecondaryVisibility => SecondaryText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     public string Summary => Session.SessionId == null
         ? "New session in this folder"
-        : Fmt.Trim(Session.Title is { } t && Session.Summary is { } s ? $"{t} — {s}" : Session.Title ?? Session.Summary, 160);
+        : Fmt.Trim(Session.Summary, 160); // the title is now the main label
     public bool CanOpen => !string.IsNullOrWhiteSpace(Session.ProjectDir);
     public string OpenTooltip => !CanOpen ? "Can't open: no folder recorded"
         : Session.SessionId == null ? "Start a new Claude Code session in this folder (no session ID was saved)"
@@ -242,8 +272,8 @@ public sealed class SnapshotSessionRow
     public Visibility NoteVisibility => string.IsNullOrWhiteSpace(Session.Note) ? Visibility.Collapsed : Visibility.Visible;
     public string Tooltip => string.Join("\n", new[]
     {
-        Session.ProjectDir,
-        Session.SessionId != null ? "Session: " + Session.SessionId : "No session id: restores as a fresh claude in this folder",
+        Fmt.TooltipHeader(Session.Title, Session.ProjectDir, Session.SessionId),
+        Session.SessionId != null ? null : "No session ID: restores as a fresh claude in this folder",
         Session.LastActive is { } la ? "Last active: " + Fmt.When(la) : null,
         FolderMissing ? "Folder no longer exists; will be skipped on restore." : null,
     }.Where(x => x != null));
