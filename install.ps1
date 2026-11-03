@@ -31,11 +31,17 @@ if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { throw 'The .NET 8
 $Destination = [System.IO.Path]::GetFullPath($Destination)
 $exe = Join-Path $Destination 'SessionKeeper.exe'
 
-# A running copy locks its files; ask instead of killing it.
+# A running copy locks its files; ask instead of killing it. That includes a copy started from this
+# repository's own build output, which the build has to overwrite.
+$buildOutput = [System.IO.Path]::GetFullPath((Join-Path $repo 'src\SessionKeeper\bin')) + '\'
 $running = Get-Process SessionKeeper -ErrorAction SilentlyContinue | Where-Object {
-    try { $_.Path -and ([System.IO.Path]::GetFullPath($_.Path) -ieq $exe) } catch { $false }
+    try { $_.Path -and (([System.IO.Path]::GetFullPath($_.Path) -ieq $exe) -or [System.IO.Path]::GetFullPath($_.Path).StartsWith($buildOutput, [StringComparison]::OrdinalIgnoreCase)) } catch { $false }
 }
-if ($running) { throw "SessionKeeper is running from $Destination. Close it (including its tray icon) and run this again." }
+if ($running) {
+    $where = ($running | ForEach-Object { $_.Path } | Select-Object -Unique) -join ', '
+    throw "SessionKeeper is running from $where. Close it (including its tray icon) and run this again. " +
+          "(If Start with Windows starts a copy from the repository's bin folder, re-tick it in the installed copy's Settings.)"
+}
 
 Write-Host "Publishing SessionKeeper to $Destination ..."
 & dotnet publish $project -c Release -o $Destination --nologo -v quiet
