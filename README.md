@@ -1,5 +1,3 @@
-<img width="826" height="528" alt="sessionkeeper-recent" src="https://github.com/user-attachments/assets/f112b4fd-8ab6-4bfa-92c7-91d302b6fba0" /># SessionKeeper
-
 A small Windows app (C# / .NET 8 WPF) that shows which Claude Code sessions are running, saves them as named snapshots, and reopens them later, each in its own PowerShell window or Windows Terminal tab, resuming the same conversation.
 
 ## Install / Update
