@@ -13,7 +13,8 @@
     <!-- Custom Main: command-line options run without starting the UI. -->
     <StartupObject>SessionKeeper.Program</StartupObject>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>1.1.0</Version>
+    <!-- The one place the version is set. Bump on each change: patch = fixes, minor = features, major = breaking. -->
+    <Version>1.0.0</Version>
     <Product>SessionKeeper</Product>
     <Description>See, save and reopen Claude Code sessions.</Description>
     <!-- Reading another process's working directory relies on 64-bit PEB offsets. -->
@@ -35,5 +36,36 @@
   <ItemGroup>
     <InternalsVisibleTo Include="SessionKeeper.Tests" />
   </ItemGroup>
+
+  <!--
+    Build info for the version footer: the git commit, the build date, the repository the app was built
+    from (where the update check looks), and whether the source had uncommitted changes. Missing git or
+    a non-git checkout just leaves these out; the build never fails because of them.
+  -->
+  <Target Name="EmbedBuildInfo" BeforeTargets="GetAssemblyAttributes">
+    <Exec Command="git rev-parse HEAD" WorkingDirectory="$(MSBuildProjectDirectory)" ConsoleToMSBuild="true"
+          IgnoreExitCode="true" ContinueOnError="true" StandardOutputImportance="low" StandardErrorImportance="low" EchoOff="true"
+          IgnoreStandardErrorWarningFormat="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_SkCommit" />
+      <Output TaskParameter="ExitCode" PropertyName="_SkCommitExit" />
+    </Exec>
+    <Exec Command="git rev-parse --show-toplevel" WorkingDirectory="$(MSBuildProjectDirectory)" ConsoleToMSBuild="true"
+          IgnoreExitCode="true" ContinueOnError="true" StandardOutputImportance="low" StandardErrorImportance="low" EchoOff="true"
+          IgnoreStandardErrorWarningFormat="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_SkRepo" />
+      <Output TaskParameter="ExitCode" PropertyName="_SkRepoExit" />
+    </Exec>
+    <Exec Command="git diff --quiet HEAD -- ." WorkingDirectory="$(MSBuildProjectDirectory)"
+          IgnoreExitCode="true" ContinueOnError="true" StandardOutputImportance="low" StandardErrorImportance="low" EchoOff="true"
+          IgnoreStandardErrorWarningFormat="true">
+      <Output TaskParameter="ExitCode" PropertyName="_SkDirtyExit" />
+    </Exec>
+    <ItemGroup>
+      <AssemblyMetadata Include="BuildDate" Value="$([System.DateTime]::UtcNow.ToString('o'))" />
+      <AssemblyMetadata Include="CommitHash" Value="$(_SkCommit.Trim())" Condition="'$(_SkCommitExit)' == '0'" />
+      <AssemblyMetadata Include="SourceRepo" Value="$(_SkRepo.Trim())" Condition="'$(_SkRepoExit)' == '0'" />
+      <AssemblyMetadata Include="SourceDirty" Value="true" Condition="'$(_SkDirtyExit)' == '1'" />
+    </ItemGroup>
+  </Target>
 
 </Project>

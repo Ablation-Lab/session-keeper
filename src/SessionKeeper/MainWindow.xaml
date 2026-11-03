@@ -248,6 +248,8 @@
         <!-- ============================== BOTTOM BARS ============================== -->
         <DockPanel x:Name="BarCurrent" Grid.Row="2" Margin="0,10,0,0">
             <TextBlock Style="{StaticResource MutedText}" VerticalAlignment="Center" Text="Auto-refreshes every 10 s"/>
+            <TextBlock x:Name="VersionText" Style="{StaticResource MutedText}" Foreground="{StaticResource Faint}" FontSize="11"
+                       VerticalAlignment="Center" Margin="10,1,0,0" TextTrimming="CharacterEllipsis"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="Refresh" Click="RefreshCurrent_Click"/>
                 <Button x:Name="SaveCurrentButton" Style="{StaticResource PrimaryButton}" Content="Save these as snapshot…" Click="SaveCurrent_Click"/>

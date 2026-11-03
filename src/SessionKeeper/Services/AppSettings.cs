@@ -24,6 +24,13 @@ public sealed class AppSettings
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public OpenMode OpenIn { get; set; } = OpenMode.PowerShellWindow;
 
+    /// <summary>
+    /// Optional: the source repository the version footer compares against. When unset, the repository the
+    /// app was built from (embedded at build time) is used.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SourceRepo { get; set; }
+
     private static readonly JsonSerializerOptions Json = new()
     {
         WriteIndented = true,

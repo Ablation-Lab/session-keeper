@@ -114,6 +114,93 @@ public static class LaunchGuard
         return null;
     }
 
+    // ------------------------------------------------------------------ read-only git queries
+
+    public sealed record ToolResult(int ExitCode, string StdOut, bool TimedOut);
+
+    private static readonly HashSet<string> ReadOnlyGitCommands = new(StringComparer.Ordinal) { "rev-parse", "rev-list" };
+    private static readonly System.Text.RegularExpressions.Regex GitRevisionArg = new(
+        @"^(--count|--verify|--quiet|--short|HEAD|[0-9a-f]{7,64}|[0-9a-f]{7,64}\.\.HEAD)$");
+    private static readonly System.Text.RegularExpressions.Regex GitPathspecArg = new(@"^[A-Za-z0-9_][A-Za-z0-9_./-]*$");
+
+    /// <summary>
+    /// Runs a read-only git query for the version footer. It isn't a user-visible launch, so no user action is
+    /// needed, but it follows the same rules as every other process start: absolute path, no shell, a hidden
+    /// window, logged. Only <c>rev-parse</c>/<c>rev-list</c> with revision/path arguments are allowed, optional
+    /// locks are disabled so git never writes to the repository, and the process is ended on timeout.
+    /// Returns null if refused or if git couldn't be run (callers stay quiet).
+    /// </summary>
+    public static ToolResult? RunReadOnlyGit(string gitExe, string repoDir, string command, IReadOnlyList<string> args, TimeSpan timeout,
+        [CallerMemberName] string caller = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+    {
+        var where = Where(file, line, caller);
+        var what = $"caller={where}  exe={gitExe}  repo={repoDir}  args={command} {string.Join(' ', args)}";
+        if (CheckReadOnlyGit(gitExe, repoDir, command, args) is { } refusal)
+        {
+            Log("BLOCKED", what + "  reason=" + refusal);
+            return null;
+        }
+
+        var psi = new ProcessStartInfo(gitExe)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true, // hidden: also keeps Windows from handing it a Terminal window
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            WorkingDirectory = repoDir,
+        };
+        foreach (var a in new[] { "--no-optional-locks", "-c", "core.fsmonitor=false", "-C", repoDir, command }.Concat(args))
+            psi.ArgumentList.Add(a);
+        psi.Environment["GIT_OPTIONAL_LOCKS"] = "0";
+        psi.Environment["GIT_TERMINAL_PROMPT"] = "0";
+        foreach (var v in new[] { "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE" }) psi.Environment.Remove(v);
+
+        Log("TOOL", what);
+        try
+        {
+            using var p = Process.Start(psi);
+            if (p == null) { Log("FAILED", $"caller={where}  error=no process"); return null; }
+            p.StandardInput.Close();
+            var stdout = p.StandardOutput.ReadToEndAsync();
+            _ = p.StandardError.ReadToEndAsync(); // drain so git can't block on a full pipe
+            if (!p.WaitForExit((int)timeout.TotalMilliseconds))
+            {
+                try { p.Kill(entireProcessTree: true); } catch { } // our own git child only
+                Log("TIMEOUT", $"caller={where}  pid={p.Id}  after={timeout.TotalSeconds:0.#}s");
+                return new ToolResult(-1, "", TimedOut: true);
+            }
+            p.WaitForExit();
+            Log("TOOLDONE", $"caller={where}  pid={p.Id}  exit={p.ExitCode}");
+            return new ToolResult(p.ExitCode, stdout.Result, TimedOut: false);
+        }
+        catch (Exception ex)
+        {
+            Log("FAILED", $"caller={where}  error={ex.Message}");
+            return null;
+        }
+    }
+
+    internal static string? CheckReadOnlyGit(string gitExe, string repoDir, string command, IReadOnlyList<string> args)
+    {
+        if (string.IsNullOrWhiteSpace(gitExe) || !Path.IsPathFullyQualified(gitExe) ||
+            !string.Equals(Path.GetFileName(gitExe), "git.exe", StringComparison.OrdinalIgnoreCase))
+            return "only git.exe by full path is allowed";
+        if (string.IsNullOrWhiteSpace(repoDir) || !Path.IsPathFullyQualified(repoDir))
+            return "the repository must be a full path";
+        if (!ReadOnlyGitCommands.Contains(command))
+            return "only read-only git queries (rev-parse, rev-list) are allowed";
+        bool pathspecs = false;
+        foreach (var a in args)
+        {
+            if (a == "--") { pathspecs = true; continue; }
+            if (pathspecs ? !GitPathspecArg.IsMatch(a) || a.Contains("..") : !GitRevisionArg.IsMatch(a))
+                return "argument not allowed: " + a;
+        }
+        return null;
+    }
+
     /// <summary>Logs a lifecycle or diagnostic event (app start/exit, etc.).</summary>
     public static void LogEvent(string kind, string message) => Log(kind, message);
 

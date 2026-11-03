@@ -31,6 +31,18 @@ Snapshots stay in `%APPDATA%\SessionKeeper` until you delete them.
 
 **Developing:** run `dotnet build`, then `dotnet test`. The app is at `src\SessionKeeper\bin\Debug\net8.0-windows\win-x64\SessionKeeper.exe`.
 
+## Version and updates
+
+The bottom bar shows the version, build commit and build date, for example `v1.0.0 · build a1b2c3d · 3 Nov 2026`. `SessionKeeper.exe --version` prints the same. A `+` after the commit means the build had uncommitted changes.
+
+- **Where it comes from:** the version is set in one place, `<Version>` in `src/SessionKeeper/SessionKeeper.csproj`. Bump it with each change: patch for fixes, minor for features, major for breaking changes. The commit, build date and source repository are embedded automatically when you build.
+- **Update check:** once at startup, in the background, the app compares its build commit with `HEAD` of the repository it was built from. You can set a different repository as `sourceRepo` in `%APPDATA%\SessionKeeper\settings.json`.
+  - Only commits that touch `src/SessionKeeper` count.
+  - If there are any, the line turns red with **update available**, and the tooltip says how many.
+  - The check only reads (`git rev-list` and `git rev-parse` with optional locks off, hidden, short timeouts, logged). It never pulls, builds or installs.
+  - If the repository or git can't be found, the line stays grey.
+  - To update, run `install.ps1` in the repository.
+
 ## Settings
 
 Open Settings with the gear button at the top right.

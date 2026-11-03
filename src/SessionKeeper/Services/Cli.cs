@@ -122,7 +122,7 @@ public static class Cli
             return opts.Command switch
             {
                 "--help" => Write(output, Usage, 0),
-                "--version" => Write(output, "SessionKeeper " + Version, 0),
+                "--version" => Write(output, "SessionKeeper " + BuildInfo.Current.FooterText.TrimStart('v'), 0),
                 "--list" => List(output, opts),
                 "--recent" => Recent(output, opts),
                 "--snapshots" => Snapshots(output, opts),
@@ -137,9 +137,6 @@ public static class Cli
             return 1;
         }
     }
-
-    private static string Version =>
-        typeof(Cli).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "?";
 
     private static int Write(TextWriter w, string text, int code)
     {

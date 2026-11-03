@@ -68,7 +68,7 @@ public static class Launcher
     /// "." would resolve differently once the launched shell has changed into the project folder, letting a
     /// repository plant its own claude.cmd.
     /// </summary>
-    private static string? SearchPath(string exe)
+    internal static string? SearchPath(string exe)
     {
         var paths = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries);
         foreach (var raw in paths)

@@ -37,9 +37,11 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         CurrentList.ItemsSource = _currentRows;
+        ShowVersion(BuildInfo.Current, null);
         _timer.Tick += async (_, _) => await AutoRefreshAsync();
         Loaded += async (_, _) =>
         {
+            _ = CheckForUpdatesAsync(); // background, once; never delays startup
             await RefreshCurrentAsync();
             _timer.Start();
         };
@@ -74,6 +76,41 @@ public partial class MainWindow : Window
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e) => new SettingsWindow { Owner = this }.ShowDialog();
+
+    // ============================================================ version footer
+
+    /// <summary>
+    /// Compares this build with the source repository once, in the background. Read-only, with a short timeout.
+    /// If the repo can't be found or checked, the footer simply stays grey.
+    /// </summary>
+    private async Task CheckForUpdatesAsync()
+    {
+        using var noLaunches = LaunchGuard.Background(); // git queries are not user launches
+        try
+        {
+            var build = BuildInfo.Current;
+            var settings = await Task.Run(() => AppSettings.Load());
+            var status = await UpdateChecker.CheckAsync(build, UpdateChecker.DefaultSources(build, settings), TimeSpan.FromSeconds(8));
+            ShowVersion(build, status);
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex); // quiet: the footer keeps its grey build line
+        }
+    }
+
+    private void ShowVersion(BuildInfo build, UpdateStatus? status)
+    {
+        bool update = status?.State == UpdateState.UpdateAvailable;
+        VersionText.Text = "·  " + build.FooterText + (update ? "  ·  update available" : "");
+        VersionText.Foreground = (System.Windows.Media.Brush)FindResource(update ? "Warn" : "Faint");
+
+        var tip = new List<string> { $"SessionKeeper {build.Version}" };
+        if (build.Commit != null) tip.Add("Commit " + build.Commit + (build.SourceDirty ? " (built with uncommitted changes)" : ""));
+        if (build.BuildDate is { } d) tip.Add("Built " + d.ToLocalTime().ToString("d MMM yyyy HH:mm"));
+        if (status != null) tip.Add(status.Detail);
+        VersionText.ToolTip = string.Join("\n", tip);
+    }
 
     private void UpdateStatus()
     {
