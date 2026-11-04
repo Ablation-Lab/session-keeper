@@ -28,8 +28,6 @@ You need Windows 10 or 11 and the [.NET 8 SDK](https://dotnet.microsoft.com/down
 4. The installer builds the app and installs it for you only, in `%LOCALAPPDATA%\Programs\SessionKeeper`. It also adds a Start menu shortcut and installs the [Claude Code skill](#claude-code-skill) into `%USERPROFILE%\.claude\skills\session-keeper` (or under `CLAUDE_CONFIG_DIR` if you've set it). That's the only thing the installer puts in Claude Code's folder, and it replaces the `SKILL.md` and `sessionkeeper.ps1` of any skill already in a folder with that name.
 5. At the end, you're asked whether to open SessionKeeper. The window then waits for a key press, so you can read what happened, including any error.
 
-<img width="826" height="528" alt="sessionkeeper-recent" src="https://github.com/user-attachments/assets/3bb809f1-d50a-475f-91e8-905927a82292" />
-
 
 **Open it:** Start menu > **SessionKeeper**.
 
