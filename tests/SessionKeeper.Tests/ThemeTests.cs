@@ -31,6 +31,9 @@ public sealed class ThemeTests
                     new InputDialog("t", "p", "v"),
                     new SaveSnapshotWindow(new List<SaveCandidate> { new() { ProjectDir = @"C:\x" } }),
                     new NewSessionWindow(new List<string> { @"C:\Projects\demo" }),
+                    new HelpWindow(HelpContent.Terminals),
+                    new TerminalRunWindow(new[] { Services.TerminalCommands.Plan(new Models.SnapshotTerminal
+                        { Kind = "terminal", Label = "t", ProjectDir = @"C:\x", CommandLine = "\"C:\\Tools\\x.exe\" a" }) }, 1, "Restore"),
                 };
                 foreach (var w in windows)
                 {

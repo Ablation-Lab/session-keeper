@@ -99,6 +99,29 @@ public partial class MainWindow : Window
 
     private void Settings_Click(object sender, RoutedEventArgs e) => new SettingsWindow { Owner = this }.ShowDialog();
 
+    private void Help_Click(object sender, RoutedEventArgs e) => ShowHelp();
+
+    /// <summary>Opens the help on the topic for the tab you're on.</summary>
+    private void ShowHelp()
+    {
+        var topic = TabRecent.IsChecked == true ? HelpContent.Recent
+            : TabSnapshots.IsChecked == true ? HelpContent.Snapshots
+            : TabTerminals.IsChecked == true ? HelpContent.Terminals
+            : HelpContent.Current;
+        new HelpWindow(topic) { Owner = this }.ShowDialog();
+    }
+
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.F1 && !e.Handled)
+        {
+            e.Handled = true;
+            ShowHelp();
+            return;
+        }
+        base.OnPreviewKeyDown(e);
+    }
+
     // ============================================================ version footer
 
     /// <summary>
