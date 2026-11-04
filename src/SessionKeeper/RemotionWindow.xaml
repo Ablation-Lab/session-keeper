@@ -1,0 +1,54 @@
+<Window x:Class="SessionKeeper.RemotionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{StaticResource AppWindow}"
+        Title="Remotion Studio" Width="600" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <StackPanel Margin="16,14,16,16">
+        <TextBlock Text="Project" FontWeight="SemiBold"/>
+        <TextBlock x:Name="HintText" Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,2,0,6"/>
+        <Grid>
+            <ListBox x:Name="ProjectList" Style="{StaticResource RowList}" MaxHeight="280" MinHeight="70"
+                     MouseDoubleClick="ProjectList_DoubleClick" AutomationProperties.Name="Remotion projects">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid ToolTip="{Binding Tooltip}" Background="Transparent" Margin="0,2">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Dir}" Style="{StaticResource MutedText}" Margin="10,0,0,0"
+                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                <Border Style="{StaticResource Badge}" Background="{StaticResource Note}" Visibility="{Binding NotInstalledVisibility}">
+                                    <TextBlock Text="needs npm install" FontSize="11" Foreground="{StaticResource AccentText}"/>
+                                </Border>
+                                <Border Style="{StaticResource Badge}" Background="{StaticResource Good}" Visibility="{Binding RunningVisibility}">
+                                    <TextBlock Text="{Binding RunningText}" FontSize="11" Foreground="{StaticResource AccentText}"/>
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding CommandText}" Style="{StaticResource MutedText}"
+                                       TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock x:Name="EmptyText" Style="{StaticResource MutedText}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                       TextWrapping="Wrap" TextAlignment="Center" Margin="12" Visibility="Collapsed"/>
+        </Grid>
+
+        <TextBlock Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,8,0,0"
+                   Text="Opens as a PowerShell window or Windows Terminal tab (see Settings). If Studio is already running for the project, you're offered its browser address instead of a second copy."/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="Cancel" IsCancel="True"/>
+            <Button x:Name="StartButton" Style="{StaticResource PrimaryButton}" Content="Start Studio" IsDefault="True" Click="Start_Click"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

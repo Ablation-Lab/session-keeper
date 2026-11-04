@@ -14,6 +14,7 @@ A small Windows app (C# / .NET 8 WPF) that shows which Claude Code sessions are 
 | **Open one session** | Open any row with its **Open** button, a double-click or Enter. You're warned before a second copy of a running session opens. | [Opening a session](#opening-a-session) |
 | **Names** | Give a session your own name. It's shown on every tab and becomes its window or tab title. | [Naming sessions](#naming-sessions) |
 | **New session** | Start a fresh Claude Code session in a recent or chosen folder, optionally named. | [Starting a new session](#starting-a-new-session) |
+| **Remotion Studio** | Start Remotion Studio for one of your Remotion projects, or open the one that's already running in your browser. | [Remotion Studio](#remotion-studio) |
 | **Built-in help** | A **?** button next to Settings (or F1) explains each tab and how to use it, opening on the tab you're on. | [Using SessionKeeper](#using-sessionkeeper) |
 | **Windows integration** | PowerShell windows or Windows Terminal tabs, Start with Windows (in the tray), a Start menu shortcut. | [Settings](#settings) |
 | **Version footer** | Shows the build, warns when your clone has newer app changes than your installed copy, and checks the .NET runtime. | [Reading the version footer](#reading-the-version-footer) |
@@ -58,7 +59,7 @@ You need Windows 10 or 11 and the [.NET 8 SDK](https://dotnet.microsoft.com/down
 
 ## Using SessionKeeper
 
-Open **SessionKeeper** from the Start menu. The window has four tabs at the top, **Current**, **Recent**, **Snapshots** and **Terminals**, a gear button at the top right for Settings, and a **?** button next to it (or F1) for built-in help. The help opens on the topic for the tab you're on and covers each tab, opening and naming sessions, settings, keyboard shortcuts and safety. The first three tabs' bottom bars have a **New session…** button. Hover over any row to see its full folder path and the first 8 characters of its session ID. The tooltip also shows the last message on Current rows, and the first and last messages on Recent rows.
+Open **SessionKeeper** from the Start menu. The window has four tabs at the top, **Current**, **Recent**, **Snapshots** and **Terminals**, a gear button at the top right for Settings, a **?** button next to it (or F1) for built-in help, and a [**Remotion Studio**](#remotion-studio) button. The help opens on the topic for the tab you're on and covers each tab, opening and naming sessions, settings, keyboard shortcuts and safety. The first three tabs' bottom bars have a **New session…** button. Hover over any row to see its full folder path and the first 8 characters of its session ID. The tooltip also shows the last message on Current rows, and the first and last messages on Recent rows.
 
 ### Current tab: what's running now
 
@@ -224,10 +225,31 @@ An idle Command Prompt or PowerShell has nothing to run, so its **Open** button 
 - The environment is the new window's, not the old one's. For example, an activated Python virtual environment or variables set by hand in the old shell aren't there.
 - Only an `.exe` given by a plain local full path is ever run: not a network or device path, not one with `..` in it. A saved command that's anything else, or that contains line breaks, control or escape characters, or invisible characters that could make it look different from what runs (such as right-to-left overrides or zero-width spaces), or is longer than 4,000 characters, isn't offered. The dialog says why and offers the shell only.
 
+### Remotion Studio
+
+The **Remotion Studio** button at the top right opens [Remotion](https://www.remotion.dev/) Studio for one of your video projects, in the same kind of window as everything else (a PowerShell window or a Windows Terminal tab, per [Settings](#settings)).
+
+1. Click **Remotion Studio**. The dialog lists the folders directly under `C:\Projects` whose `package.json` lists `remotion` or an `@remotion/` package. The project you used last is picked.
+2. Each row shows the folder and what will run: `npm.cmd run dev` and what the project's `dev` script does, or `npx.cmd remotion studio` if it has no `dev` script or its `dev` script doesn't run `remotion studio` (for example `next dev` in a project that only uses Remotion's player). A **needs npm install** badge means Remotion isn't in the project's `node_modules` yet. A green **running · localhost:3000** badge means Studio is already running for it.
+3. Pick a project and click **Start Studio**, or double-click it.
+
+If Studio is already running for that project, you're told so and offered its address (for example `http://localhost:3000/`) to open in your browser instead. A second copy is never started. If it's still starting and has no address yet, you're told to try again in a moment.
+
+**Good to know**
+- It uses `npm.cmd` and `npx.cmd`, not `npm` and `npx`: those run `npm.ps1`, which PowerShell's script execution policy can block. They're taken from the Node.js install folder (`%ProgramFiles%\nodejs`) or from a full path on `PATH`, never from the project folder.
+- Only two commands are ever run, `npm.cmd run dev` and `npx.cmd remotion studio`, and only in the folder you picked. `npm run dev` runs whatever the project's `dev` script says, which is why the dialog shows it.
+- Some folders are refused, with the reason shown:
+  - a path containing `&`, `|`, `<`, `>`, `^` or `%`, because `cmd.exe` (which runs npm's `.cmd` files) reads the folder path unquoted in places, so `demo&calc` would start calc;
+  - a project whose `.npmrc` sets `prefix`, `globalconfig` or `userconfig`, because `npm.cmd` asks npm for its prefix first and would then run an npm from there instead of the installed one;
+  - network (UNC) folders, where `cmd.exe` silently starts in `C:\Windows` instead.
+- If you click Start again within 30 seconds of starting Studio for the same project (before it's listening, so it can't be detected yet), you're asked before a second copy starts.
+- "Already running" means a `node` process running Remotion's `studio` (or older `preview`) command whose working folder is the project, or a folder inside it if Remotion comes from the project's own `node_modules`. Its address is the lowest port that process listens on, read from Windows' TCP table. A Studio started in a similarly named folder (`demo-2` for `demo`) doesn't count.
+- To look somewhere other than `C:\Projects`, set `remotionProjectsFolder` in `%APPDATA%\SessionKeeper\settings.json`. Only folders directly inside it are listed, and names ending in a dot or space are skipped.
+
 ### Settings
 
 1. Click the gear button at the top right.
-2. Choose how sessions open under **Open sessions in**. This applies to **Open**, **Reopen selected**, **Restore**, **New session** and reopened terminals.
+2. Choose how sessions open under **Open sessions in**. This applies to **Open**, **Reopen selected**, **Restore**, **New session**, reopened terminals and **Remotion Studio**.
    - **PowerShell window** (the default): each session opens in its own Windows PowerShell window.
    - **Windows Terminal tab:** sessions open as tabs in a Windows Terminal window. This option is greyed out if Terminal isn't installed.
 3. Optionally, tick **Start with Windows**. SessionKeeper then starts in the system tray when you sign in. Click the tray icon to open it, or right-click it and choose **Exit**. It's off by default.
@@ -312,7 +334,7 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
 
 ### Settings file
 
-`%APPDATA%\SessionKeeper\settings.json` stores **Open sessions in** and the optional `sourceRepo`. Your session names are in `%APPDATA%\SessionKeeper\nicknames.json`. Start with Windows is a per-user entry under `HKCU\…\CurrentVersion\Run`, and the Start menu shortcut is `SessionKeeper.lnk` in your own Start menu folder. Neither is stored in the settings file.
+`%APPDATA%\SessionKeeper\settings.json` stores **Open sessions in**, the optional `sourceRepo`, the Remotion project you used last (`lastRemotionProject`) and the optional `remotionProjectsFolder`. Your session names are in `%APPDATA%\SessionKeeper\nicknames.json`. Start with Windows is a per-user entry under `HKCU\…\CurrentVersion\Run`, and the Start menu shortcut is `SessionKeeper.lnk` in your own Start menu folder. Neither is stored in the settings file.
 
 ### How it works
 
@@ -325,6 +347,7 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
 | Opening sessions | **PowerShell window:** `conhost.exe powershell -NoExit -EncodedCommand …`. Starting through conhost keeps it a real PowerShell window even when Windows' default terminal is Windows Terminal. **Windows Terminal tab:** `wt -w <name> new-tab -d <folder> powershell -NoExit -EncodedCommand …`. Both run `claude --resume <id>` in the session's folder. |
 | Snapshots | Readable JSON in `%APPDATA%\SessionKeeper\snapshots\`, with an optional note for the whole snapshot and per-session notes. |
 | Terminal sessions | One process-list snapshot (PID, parent, exe name), one pass over the desktop's console windows (class and owner only), then query-only handles on each terminal's own processes for the command line, start time and folder. Parent links are checked against start times, so a reused process ID can't attach a program to the wrong terminal. A scan takes a few milliseconds. |
+| Remotion Studio | The same window or tab as Claude sessions. The script enters the project folder (or stops), then runs `npm.cmd run dev` or `npx.cmd remotion studio` by full path. "Already running" comes from the process list, command lines, working folders and Windows' TCP listener table (`GetExtendedTcpTable`); nothing connects to Studio. The browser address opens through `explorer.exe`. |
 | Reopening terminals | The same window or tab as Claude sessions. The script enters the folder, then starts the saved program through .NET's process API with the saved arguments as one string, so neither PowerShell nor SessionKeeper parses them. |
 
 `CLAUDE_CONFIG_DIR` is respected if set.
@@ -332,7 +355,7 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
 ### Safety
 
 - **Launches only on request.**
-  - Every process SessionKeeper starts goes through one gatekeeper (`LaunchGuard`), which refuses anything outside an explicit click on **Open**, **Reopen selected**, **Restore**, **New session** (its **Start** button) or **Open folder**.
+  - Every process SessionKeeper starts goes through one gatekeeper (`LaunchGuard`), which refuses anything outside an explicit click on **Open**, **Reopen selected**, **Restore**, **New session** (its **Start** button), **Remotion Studio** (its **Start Studio** button, or **Yes** to open a running Studio's address) or **Open folder**.
   - The gatekeeper stops SessionKeeper's own code from launching things by accident (for example from a timer). It isn't a security boundary: it doesn't protect against other software running as you.
   - Background work has no such permission, so it can never launch anything. That covers auto-refresh, session detection, the tray and the command line.
   - Shell execution (URIs such as `ms-settings:`, documents, verbs) is refused, and so is `wt.exe` without a `new-tab` command. A test fails if any other code calls `Process.Start`.
@@ -358,6 +381,7 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
   - `claude` is resolved to a full path, and relative `PATH` entries are ignored, so a repository can't plant its own `claude.cmd`.
   - `NoDefaultCurrentDirectoryInExePath` is set in each window, so npm's `claude.cmd` shim can't pick up a `node.exe` from the project folder.
   - A conversation is only resumed in the folder it belongs to.
+  - Remotion Studio runs only `npm.cmd run dev` or `npx.cmd remotion studio`, with the tool taken by full path from outside the project. The folder is checked again just before launching. Folders that `cmd.exe` would misread (`& | < > ^ %` in the path, or a network path) and projects whose `.npmrc` redirects npm are refused. A test runs the generated script against a folder named with spaces, straight and curly quotes, `;`, brackets, `$(...)` and a backtick and checks the tool ran in exactly that folder, and that nothing runs if the folder can't be entered.
 - If SessionKeeper itself was started from inside a Claude Code session, it inherited nine session-scoped variables that would stop the new `claude` from starting normally. They're removed before launching, unless you've set them permanently (user or machine environment): `CLAUDECODE`, `CLAUDE_PID`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_SESSION_ATTENDED`, `CLAUDE_CODE_MESSAGING_SOCKET`, `CLAUDE_CODE_MESSAGING_TOKEN` and `CLAUDE_CODE_SSE_PORT`. Every other `CLAUDE*` variable (such as `CLAUDE_CONFIG_DIR` or `CLAUDE_CODE_USE_BEDROCK`) is passed through, and the names of non-permanent ones are written to the launch log.
 
 ### Limits
@@ -365,4 +389,5 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
 - Claude Code's registry and file formats are internal and could change in a future version. If they do, the Current tab falls back to listing *unmatched* processes.
 - Node-based installs (`node.exe … claude-code`) are matched through the registry only. They won't appear as *unmatched* when unregistered.
 - The Terminals tab has its own limits: see [What it can and can't see](#terminals-tab-other-agents-programs-and-shells).
+- Remotion Studio lists only folders directly inside the projects folder, not nested ones. A Studio running as administrator, or one whose working folder can't be read and whose Remotion isn't in the project's `node_modules`, isn't recognised as running.
 - `claude.exe` is found in `%USERPROFILE%\.local\bin`, then on `PATH`, then as npm's `claude.cmd`. If none of these exist, the windows run `claude` and rely on `PATH`.

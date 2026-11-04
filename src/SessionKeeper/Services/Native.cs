@@ -279,6 +279,65 @@ internal static class Native
         }
     }
 
+    [DllImport("iphlpapi.dll", SetLastError = true)]
+    private static extern uint GetExtendedTcpTable(IntPtr table, ref int size, bool sorted, int addressFamily, int tableClass, int reserved);
+
+    private const int AF_INET = 2, AF_INET6 = 23, TCP_TABLE_OWNER_PID_LISTENER = 3;
+    private const uint ERROR_INSUFFICIENT_BUFFER = 122;
+
+    /// <summary>A TCP port some process is listening on (IPv4 or IPv6).</summary>
+    internal readonly record struct Listener(int Pid, int Port);
+
+    /// <summary>
+    /// Every listening TCP port with its owning process, from the system's TCP table (read-only: no process is
+    /// opened and no connection is made). Empty if the table can't be read.
+    /// </summary>
+    public static List<Listener> ListeningTcpPorts()
+    {
+        var list = new List<Listener>();
+        // Row layouts: MIB_TCPROW_OWNER_PID is 24 bytes (port at 8, PID at 20); MIB_TCP6ROW_OWNER_PID is 56 bytes
+        // (port at 20, PID at 52). Both tables start with a 4-byte entry count.
+        foreach (var (family, rowSize, portOffset, pidOffset) in new[] { (AF_INET, 24, 8, 20), (AF_INET6, 56, 20, 52) })
+        {
+            try
+            {
+                int size = 0;
+                GetExtendedTcpTable(IntPtr.Zero, ref size, false, family, TCP_TABLE_OWNER_PID_LISTENER, 0);
+                for (int attempt = 0; attempt < 3 && size > 0 && size < 16 * 1024 * 1024; attempt++)
+                {
+                    var buffer = Marshal.AllocHGlobal(size);
+                    try
+                    {
+                        int got = size;
+                        var rc = GetExtendedTcpTable(buffer, ref got, false, family, TCP_TABLE_OWNER_PID_LISTENER, 0);
+                        if (rc == ERROR_INSUFFICIENT_BUFFER) { size = got + 1024; continue; } // the table grew: retry bigger
+                        if (rc != 0) break;
+                        int count = Marshal.ReadInt32(buffer);
+                        if (count < 0 || 4L + (long)count * rowSize > size) break;
+                        for (int i = 0; i < count; i++)
+                        {
+                            int row = 4 + i * rowSize;
+                            int raw = Marshal.ReadInt32(buffer, row + portOffset);
+                            int port = ((raw & 0xFF) << 8) | ((raw >> 8) & 0xFF); // network byte order in the low 16 bits
+                            int pid = Marshal.ReadInt32(buffer, row + pidOffset);
+                            if (port > 0 && pid > 0) list.Add(new Listener(pid, port));
+                        }
+                        break;
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal(buffer);
+                    }
+                }
+            }
+            catch
+            {
+                // This family's table couldn't be read: carry on with the other.
+            }
+        }
+        return list;
+    }
+
     public static void UseDarkTitleBar(IntPtr hwnd)
     {
         try

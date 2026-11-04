@@ -62,5 +62,18 @@ public sealed class LiveSmokeTests(ITestOutputHelper output)
         }
     }
 
+    /// <summary>Prints the Remotion projects and any running Studio (read-only). Same SK_LIVE=1 switch.</summary>
+    [SkippableFact]
+    public void LiveRemotion()
+    {
+        Skip.IfNot(Environment.GetEnvironmentVariable("SK_LIVE") == "1", "Reads the real projects folder and process list; set SK_LIVE=1 to run.");
+        var sw = Stopwatch.StartNew();
+        var projects = RemotionStudio.FindProjects();
+        var running = RemotionStudio.FindRunning(projects.Select(p => p.Dir));
+        output.WriteLine($"Remotion projects: {projects.Count} ({sw.ElapsedMilliseconds} ms), listeners: {Native.ListeningTcpPorts().Count}");
+        foreach (var p in projects)
+            output.WriteLine($"  {p.Name,-20} dev={p.DevScript ?? "(none)"}  installed={p.Installed}  running={running[p.Dir]?.Address ?? (running[p.Dir] != null ? "yes, no port" : "no")}");
+    }
+
     private static string Trim(string? s) => s == null ? "" : s.Length > 70 ? s[..70] + "…" : s;
 }

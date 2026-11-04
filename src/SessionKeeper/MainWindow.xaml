@@ -65,6 +65,14 @@
             <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Margin="8,0,0,0" Padding="6,2"
                     Content="&#xE897;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"
                     ToolTip="Help (F1)" AutomationProperties.Name="Help" Click="Help_Click"/>
+            <Button x:Name="RemotionButton" DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Margin="8,0,0,0" Padding="6,2"
+                    ToolTip="Open Remotion Studio for one of your Remotion projects" AutomationProperties.Name="Remotion Studio"
+                    Click="RemotionStudio_Click">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE714;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
+                    <TextBlock Text="Remotion Studio" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
             <TextBlock x:Name="StatusText" Style="{StaticResource MutedText}" HorizontalAlignment="Right" VerticalAlignment="Center"
                        TextTrimming="CharacterEllipsis" Margin="12,0,0,0"/>
         </DockPanel>

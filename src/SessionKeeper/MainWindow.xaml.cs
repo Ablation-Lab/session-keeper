@@ -101,6 +101,183 @@ public partial class MainWindow : Window
 
     private void Help_Click(object sender, RoutedEventArgs e) => ShowHelp();
 
+    // ============================================================ Remotion Studio
+
+    /// <summary>When Studio was last started for each folder: it takes a few seconds before it can be detected.</summary>
+    private readonly Dictionary<string, DateTime> _studioStarted = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan StudioStartupGrace = TimeSpan.FromSeconds(30);
+
+    private async void RemotionStudio_Click(object sender, RoutedEventArgs e)
+    {
+        if (_launching) { SetAllStatus("Still opening the previous sessions…"); return; }
+        // Held from the first click until the launch is done, so a quick second click can't stack dialogs or launches.
+        _launching = true;
+        try
+        {
+            await PickAndStartStudioAsync();
+        }
+        finally
+        {
+            _launching = false;
+        }
+    }
+
+    private async Task PickAndStartStudioAsync()
+    {
+        AppSettings settings;
+        List<RemotionProject> projects;
+        string root;
+        try
+        {
+            settings = await Task.Run(() => AppSettings.Load());
+            root = string.IsNullOrWhiteSpace(settings.RemotionProjectsFolder) ? RemotionStudio.DefaultProjectsFolder : settings.RemotionProjectsFolder;
+            projects = await Task.Run(() => RemotionStudio.FindProjects(root));
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+            MessageBox.Show(this, "Couldn't list the Remotion projects:\n" + ex.Message, "SessionKeeper", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        var dlg = new RemotionWindow(projects, root, settings.LastRemotionProject, dirs => RemotionStudio.FindRunning(dirs)) { Owner = this };
+        if (dlg.ShowDialog() != true || dlg.Project is not { } chosen) return;
+        await StartStudioAsync(chosen.Dir);
+    }
+
+    /// <summary>How long ago Studio was started from here for this folder, if within the last 30 seconds.</summary>
+    private TimeSpan? RecentlyStarted(string dir)
+    {
+        if (!_studioStarted.TryGetValue(dir.TrimEnd('\\'), out var at)) return null;
+        var ago = DateTime.UtcNow - at;
+        return ago < StudioStartupGrace ? ago : null;
+    }
+
+    /// <summary>
+    /// Starts Remotion Studio for a project, unless it's already running there (then offers its address instead).
+    /// Everything is checked again at this point, off the UI thread: the folder must still hold a Remotion
+    /// package.json, and the running check is fresh rather than what the dialog showed. The caller holds _launching.
+    /// </summary>
+    private async Task StartStudioAsync(string dir)
+    {
+        try
+        {
+            var (project, running, command, problem) = await Task.Run(() =>
+            {
+                var p = RemotionStudio.ReadProject(dir);
+                if (p == null) return (p, (StudioInstance?)null, (StudioCommand?)null, (string?)null);
+                var r = RemotionStudio.FindRunning(p.Dir);
+                string? why = null;
+                var c = r == null ? RemotionStudio.CommandFor(p, RemotionStudio.FindTool, out why) : null;
+                return (p, r, c, why);
+            });
+            var name = project?.Name ?? Fmt.FolderName(dir);
+            if (project == null)
+            {
+                MessageBox.Show(this, $"“{name}” no longer has a package.json that uses Remotion ({dir}).", "Remotion Studio",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (running != null)
+            {
+                RememberRemotionProject(project.Dir);
+                if (running.Port is { } port)
+                {
+                    var answer = MessageBox.Show(this,
+                        $"Remotion Studio is already running for “{name}” at {RemotionStudio.AddressFor(port)}\n\n" +
+                        "Open it in your browser instead of starting a second copy?",
+                        "Remotion Studio already running", MessageBoxButton.YesNo, MessageBoxImage.Information, MessageBoxResult.Yes);
+                    if (answer == MessageBoxResult.Yes) OpenStudioInBrowser(port);
+                    else SetAllStatus($"Not started: Remotion Studio is already running for {name}");
+                }
+                else
+                {
+                    MessageBox.Show(this,
+                        $"Remotion Studio is already running for “{name}” (process {string.Join(", ", running.Pids)}), but it isn't " +
+                        "listening on a port yet, so its address isn't known.\n\nA second copy wasn't started. Try again in a moment.",
+                        "Remotion Studio already running", MessageBoxButton.OK, MessageBoxImage.Information);
+                    SetAllStatus($"Not started: Remotion Studio is already running for {name}");
+                }
+                return;
+            }
+
+            // Started from here moments ago but not detectable yet (npm and Studio take a few seconds to start).
+            if (RecentlyStarted(project.Dir) is { } ago)
+            {
+                var again = MessageBox.Show(this,
+                    $"Remotion Studio was started for “{name}” {Math.Max(1, (int)ago.TotalSeconds)} seconds ago and may still be starting.\n\n" +
+                    "Start another copy anyway?",
+                    "Remotion Studio may be starting", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+                if (again != MessageBoxResult.Yes)
+                {
+                    SetAllStatus($"Not started: Remotion Studio is still starting for {name}");
+                    return;
+                }
+            }
+
+            if (command == null)
+            {
+                MessageBox.Show(this, $"Couldn't start Remotion Studio for “{name}”: {problem}", "Remotion Studio",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var mode = (await Task.Run(() => AppSettings.Load())).OpenIn;
+            var item = new LaunchItem(project.Dir, null, name, "Remotion Studio: " + name, Studio: command);
+            LaunchResult result;
+            using (LaunchGuard.UserAction(LaunchGuard.RemotionStudio))
+                result = await Task.Run(() => Launcher.Launch(new[] { item }, mode));
+            ReportLaunch(result, single: true);
+            if (result.OpenedItems.Count > 0)
+            {
+                _studioStarted[project.Dir.TrimEnd('\\')] = DateTime.UtcNow;
+                RememberRemotionProject(project.Dir);
+                SetAllStatus($"Started Remotion Studio for {name} ({command.Display})");
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+            MessageBox.Show(this, "Couldn't start Remotion Studio:\n" + ex.Message, "SessionKeeper", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void OpenStudioInBrowser(int port)
+    {
+        var address = RemotionStudio.AddressFor(port);
+        try
+        {
+            using var action = LaunchGuard.UserAction(LaunchGuard.OpenStudioInBrowser);
+            using var _ = LaunchGuard.Start(RemotionStudio.BrowserStart(port), "Browser: Remotion Studio at " + address);
+            SetAllStatus("Opened " + address);
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+            MessageBox.Show(this, $"Couldn't open the browser:\n{ex.Message}\n\nStudio's address is {address}", "SessionKeeper",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>
+    /// Remembers the project so the Remotion Studio dialog picks it first next time. Best effort, on the UI thread like
+    /// the Settings window's own saves (so the two never write at once), and skipped if the settings file couldn't be
+    /// read, so real settings are never replaced by defaults.
+    /// </summary>
+    private static void RememberRemotionProject(string dir)
+    {
+        try
+        {
+            if (AppSettings.TryLoad() is not { } s || s.LastRemotionProject == dir) return;
+            s.LastRemotionProject = dir;
+            s.Save();
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+        }
+    }
+
     /// <summary>Opens the help on the topic for the tab you're on.</summary>
     private void ShowHelp()
     {

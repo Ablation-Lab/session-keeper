@@ -32,6 +32,7 @@ public sealed class ThemeTests
                     new SaveSnapshotWindow(new List<SaveCandidate> { new() { ProjectDir = @"C:\x" } }),
                     new NewSessionWindow(new List<string> { @"C:\Projects\demo" }),
                     new HelpWindow(HelpContent.Terminals),
+                    new RemotionWindow(new[] { new Services.RemotionProject("demo", @"C:\Projects\demo", "remotion studio", false) }, @"C:\Projects", null),
                     new TerminalRunWindow(new[] { Services.TerminalCommands.Plan(new Models.SnapshotTerminal
                         { Kind = "terminal", Label = "t", ProjectDir = @"C:\x", CommandLine = "\"C:\\Tools\\x.exe\" a" }) }, 1, "Restore"),
                 };

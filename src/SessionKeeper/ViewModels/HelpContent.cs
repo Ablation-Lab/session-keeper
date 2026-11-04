@@ -34,6 +34,7 @@ public static class HelpContent
                 {
                     "Hover over any row to see its full folder, session ID and last messages.",
                     "The gear button opens **Settings**; the **?** button (or F1) opens this help.",
+                    "**Remotion Studio** (top right) starts Remotion Studio for one of your Remotion projects.",
                     "Nothing opens unless you click a button. SessionKeeper only reads Claude Code's files; it never changes them.",
                     "Lists refresh every 10 seconds while the window is showing.",
                 }),
@@ -153,6 +154,25 @@ public static class HelpContent
                 }),
             }),
 
+        new("remotion", "Remotion Studio",
+            "The Remotion Studio button (top right) opens Remotion Studio for one of your video projects.",
+            new HelpBlock[]
+            {
+                new("Start Studio", new[]
+                {
+                    "Click **Remotion Studio**. It lists the folders in C:\\Projects whose package.json uses Remotion, with the one you used last picked.",
+                    "Pick a project and click **Start Studio** (or double-click it).",
+                    "Studio opens as a PowerShell window or Windows Terminal tab, as set in Settings. It runs npm.cmd run dev, or npx.cmd remotion studio if the project's dev script doesn't run Studio.",
+                }, Numbered: true),
+                new("Good to know", new[]
+                {
+                    "A green **running** badge means Studio is already running for that project, and shows its address. Starting it again offers to open that address in your browser instead of a second copy.",
+                    "**needs npm install** means Remotion isn't in the project's node_modules yet: run npm install in the folder first.",
+                    "Each row shows what the dev script runs. Only npm.cmd run dev or npx.cmd remotion studio is ever started, and only in the folder you picked.",
+                    "Folders whose path has & | < > ^ or % are refused (cmd.exe, which runs npm, would misread them), and so are projects whose .npmrc points npm somewhere else.",
+                }),
+            }),
+
         new("settings", "Settings and shortcuts",
             "Click the gear button at the top right. Changes apply straight away.",
             new HelpBlock[]
@@ -180,7 +200,7 @@ public static class HelpContent
             {
                 new(null, new[]
                 {
-                    "**Only on your click:** windows open only from Open, Reopen selected, Restore, New session and Open folder. Every launch is logged in %APPDATA%\\SessionKeeper\\logs.",
+                    "**Only on your click:** windows open only from Open, Reopen selected, Restore, New session, Remotion Studio and Open folder. Every launch is logged in %APPDATA%\\SessionKeeper\\logs.",
                     "**Read-only:** Claude Code's files and processes, and the terminals on the Terminals tab, are only ever read, never changed or closed.",
                     "**Your data:** snapshots, settings and session names live in %APPDATA%\\SessionKeeper.",
                     "**More detail:** README.md in the SessionKeeper repository covers everything, including the command line and the Claude Code skill.",
