@@ -1,3 +1,4 @@
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
@@ -10,7 +11,6 @@ namespace SessionKeeper.Services;
 /// </summary>
 internal static class Native
 {
-    private const uint PROCESS_QUERY_INFORMATION = 0x0400;
     private const uint PROCESS_VM_READ = 0x0010;
     private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
@@ -55,9 +55,13 @@ internal static class Native
         if (h.IsInvalid) return new ProcessFacts(null, null, null);
 
         string? path = null;
-        var sb = new StringBuilder(32768);
-        int size = sb.Capacity;
-        if (QueryFullProcessImageName(h, 0, sb, ref size)) path = sb.ToString(0, size);
+        foreach (var capacity in new[] { 520, 32768 }) // most paths fit the first; long paths get a second try
+        {
+            var sb = new StringBuilder(capacity);
+            int size = sb.Capacity;
+            if (QueryFullProcessImageName(h, 0, sb, ref size)) { path = sb.ToString(0, size); break; }
+            if (Marshal.GetLastWin32Error() != 122) break; // ERROR_INSUFFICIENT_BUFFER
+        }
 
         long? created = GetProcessTimes(h, out var c, out _, out _, out _) ? c : null;
 
@@ -78,7 +82,7 @@ internal static class Native
         if (!Environment.Is64BitProcess) return null;
         try
         {
-            using var h = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid);
+            using var h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, false, pid);
             if (h.IsInvalid) return null;
             if (IsWow64Process(h, out var wow) && wow) return null;
 
@@ -104,6 +108,170 @@ internal static class Native
             var dir = Encoding.Unicode.GetString(chars);
             if (dir.Length > 3) dir = dir.TrimEnd('\\');
             return dir;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // ------------------------------------------------------------------ terminal detection (all read-only)
+
+    private const uint TH32CS_SNAPPROCESS = 0x00000002;
+    private const int ProcessCommandLineInformation = 60; // Windows 8.1+, needs only limited query rights
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint pid);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "Process32FirstW")]
+    private static extern bool Process32First(IntPtr snapshot, ref ProcessEntry32 entry);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "Process32NextW")]
+    private static extern bool Process32Next(IntPtr snapshot, ref ProcessEntry32 entry);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr h);
+
+    [DllImport("ntdll.dll")]
+    private static extern int NtQueryInformationProcess(SafeProcessHandle h, int infoClass, IntPtr buffer, int length, out int returnLength);
+
+    private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hwnd, StringBuilder name, int max);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out int pid);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ProcessEntry32
+    {
+        public uint Size;
+        public uint Usage;
+        public uint ProcessId;
+        public IntPtr DefaultHeapId;
+        public uint ModuleId;
+        public uint Threads;
+        public uint ParentProcessId;
+        public int PriorityClassBase;
+        public uint Flags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string ExeFile;
+    }
+
+    /// <summary>One entry of the system process list: PID, parent PID (which may be stale) and exe file name.</summary>
+    internal readonly record struct ProcEntry(int Pid, int ParentPid, string ExeName);
+
+    /// <summary>Every process with its parent PID and exe name, from one system snapshot (no process is opened).</summary>
+    public static List<ProcEntry> SnapshotProcesses()
+    {
+        var list = new List<ProcEntry>();
+        var snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snap == IntPtr.Zero || snap == new IntPtr(-1)) return list;
+        try
+        {
+            var e = new ProcessEntry32 { Size = (uint)Marshal.SizeOf<ProcessEntry32>() };
+            for (bool ok = Process32First(snap, ref e); ok; ok = Process32Next(snap, ref e))
+                list.Add(new ProcEntry((int)e.ProcessId, (int)e.ParentProcessId, e.ExeFile ?? ""));
+        }
+        finally
+        {
+            CloseHandle(snap);
+        }
+        return list;
+    }
+
+    internal enum ConsoleKind { Classic, Pseudo }
+
+    /// <summary>
+    /// A console window and the process Windows reports as its owner (the console's first client). Hidden classic
+    /// windows are reported too (Visible = false): they never become sessions, but a process that owns any console
+    /// of its own isn't part of another terminal's session.
+    /// </summary>
+    internal readonly record struct ConsoleOwner(int Pid, ConsoleKind Kind, bool Visible = true);
+
+    /// <summary>
+    /// Console windows on the desktop and their owners. A classic console window (ConsoleWindowClass) is a
+    /// session only when visible: hidden ones belong to background tools. Windows Terminal (and other ConPTY hosts)
+    /// give each tab or pane an invisible PseudoConsoleWindow owned by the tab's root process. Reads window classes,
+    /// visibility and owners only; no message is sent to any window.
+    /// </summary>
+    public static List<ConsoleOwner> ConsoleWindowOwners()
+    {
+        var list = new List<ConsoleOwner>();
+        var cls = new StringBuilder(64);
+        EnumWindows((hwnd, _) =>
+        {
+            cls.Clear();
+            if (GetClassName(hwnd, cls, cls.Capacity) == 0) return true;
+            var name = cls.ToString();
+            ConsoleKind? kind = name == "PseudoConsoleWindow" ? ConsoleKind.Pseudo
+                : name == "ConsoleWindowClass" ? ConsoleKind.Classic
+                : null;
+            if (kind != null && GetWindowThreadProcessId(hwnd, out var pid) != 0 && pid > 0)
+                list.Add(new ConsoleOwner(pid, kind.Value, kind == ConsoleKind.Pseudo || IsWindowVisible(hwnd)));
+            return true;
+        }, IntPtr.Zero);
+        return list;
+    }
+
+    /// <summary>Another process's full command line, using limited query rights. Null if it can't be read.</summary>
+    public static string? TryGetCommandLine(int pid)
+    {
+        try
+        {
+            using var h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (h.IsInvalid) return null;
+            for (int attempt = 0; attempt < 2; attempt++) // the size can change between the two calls: try once more
+            {
+                NtQueryInformationProcess(h, ProcessCommandLineInformation, IntPtr.Zero, 0, out var size);
+                if (size <= 2 * IntPtr.Size || size > 128 * 1024) return null;
+                var buffer = Marshal.AllocHGlobal(size);
+                try
+                {
+                    if (NtQueryInformationProcess(h, ProcessCommandLineInformation, buffer, size, out _) != 0) continue;
+                    // A UNICODE_STRING header, then the text, all inside our own buffer.
+                    int length = (ushort)Marshal.ReadInt16(buffer); // in bytes
+                    var text = Marshal.ReadIntPtr(buffer, IntPtr.Size);
+                    long offset = text.ToInt64() - buffer.ToInt64();
+                    if (length == 0 || offset < 2 * IntPtr.Size || offset + length > size) return null;
+                    return Marshal.PtrToStringUni(text, length / 2);
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(buffer);
+                }
+            }
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether an exe is a GUI (windowed) program, read from the PE header of the file on disk (the process itself
+    /// isn't touched). Null if the file can't be read or isn't a PE image.
+    /// </summary>
+    public static bool? IsGuiImage(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return null;
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            var header = new byte[1024];
+            int read = fs.Read(header, 0, header.Length);
+            if (read < 0x40 || header[0] != 'M' || header[1] != 'Z') return null;
+            int pe = BitConverter.ToInt32(header, 0x3C);
+            if (pe < 0 || pe + 24 + 70 > read || header[pe] != 'P' || header[pe + 1] != 'E' || header[pe + 2] != 0 || header[pe + 3] != 0) return null;
+            int subsystem = BitConverter.ToUInt16(header, pe + 24 + 68); // same offset for PE32 and PE32+
+            return subsystem == 2; // IMAGE_SUBSYSTEM_WINDOWS_GUI (3 = console)
         }
         catch
         {

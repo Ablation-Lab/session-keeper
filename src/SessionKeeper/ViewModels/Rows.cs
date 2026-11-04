@@ -57,6 +57,16 @@ internal static class Fmt
         return string.IsNullOrEmpty(name) ? dir : name;
     }
 
+    /// <summary>"45s", "12m", "2h 05m", "3d 4h".</summary>
+    public static string Duration(TimeSpan d)
+    {
+        if (d < TimeSpan.Zero) d = TimeSpan.Zero;
+        if (d < TimeSpan.FromMinutes(1)) return $"{(int)d.TotalSeconds}s";
+        if (d < TimeSpan.FromHours(1)) return $"{(int)d.TotalMinutes}m";
+        if (d < TimeSpan.FromDays(1)) return $"{(int)d.TotalHours}h {d.Minutes:00}m";
+        return $"{(int)d.TotalDays}d {d.Hours}h";
+    }
+
     public static string ShortId(string? id) => string.IsNullOrEmpty(id) ? "" : id.Length > 8 ? id[..8] : id;
 
     // Titles Claude Code generates for resumed or empty conversations; they don't identify anything.
@@ -339,7 +349,8 @@ public sealed class SnapshotListItem
     public required SnapshotFile File { get; init; }
     public string Name => File.Snapshot?.Name ?? Path.GetFileName(File.Path);
     public string Meta => File.Snapshot is { } s
-        ? $"{Fmt.When(s.CreatedAt)}  ·  {s.Sessions.Count} session{(s.Sessions.Count == 1 ? "" : "s")}"
+        ? $"{Fmt.When(s.CreatedAt)}  ·  {s.Sessions.Count} session{(s.Sessions.Count == 1 ? "" : "s")}" +
+          (s.ValidTerminals is { Count: > 0 } t ? $"  ·  {t.Count} terminal{(t.Count == 1 ? "" : "s")}" : "")
         : File.Error ?? "";
 }
 
@@ -415,6 +426,8 @@ public sealed class SaveCandidate : Observable
     public string? Summary { get; init; }
     public DateTimeOffset? LastActive { get; init; }
     public bool IsRunning { get; init; }
+    /// <summary>Set for a terminal session (saved to the snapshot's terminal list, not as a Claude session).</summary>
+    public SnapshotTerminal? Terminal { get; init; }
 
     public bool IsChecked { get => _isChecked; set => Set(ref _isChecked, value); }
     public string Note
@@ -425,13 +438,22 @@ public sealed class SaveCandidate : Observable
     public Visibility NotePlaceholderVisibility => string.IsNullOrEmpty(_note) ? Visibility.Visible : Visibility.Collapsed;
 
     public string FolderName => Fmt.FolderName(ProjectDir);
-    public string MainLabel => Fmt.MainLabel(Nickname, Title, ProjectDir);
-    public string SecondaryText => Fmt.SecondaryText(Nickname, Title, ProjectDir);
+    public string MainLabel => Terminal != null ? Terminal.Label : Fmt.MainLabel(Nickname, Title, ProjectDir);
+    public string SecondaryText => Terminal != null ? FolderName : Fmt.SecondaryText(Nickname, Title, ProjectDir);
     public Visibility SecondaryVisibility => SecondaryText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     // The title is now the main label, so the detail line carries the last message instead.
-    public string Detail => (IsRunning ? "running · " : "") + Fmt.When(LastActive) +
-                            (SessionId == null ? " · new session" : "") +
-                            (string.IsNullOrEmpty(Summary) ? "" : "  —  " + Fmt.Trim(Summary, 90));
-    public string Tooltip => Fmt.TooltipHeader(Nickname, Title, ProjectDir, SessionId) +
-                             (Summary != null ? "\nLast message: " + Fmt.Trim(Summary, 300) : "");
+    public string Detail => Terminal != null
+        ? "terminal · " + (TerminalCommands.MayContainSecret(Terminal.CommandLine) ? "\u26A0 may contain a password or token · " : "") +
+          (Terminal.CommandLine != null ? Fmt.Trim(TerminalCommands.Pretty(Terminal.CommandLine), 110) : Summary ?? (Terminal.Shell ?? "shell") + " at the prompt")
+        : (IsRunning ? "running · " : "") + Fmt.When(LastActive) +
+          (SessionId == null ? " · new session" : "") +
+          (string.IsNullOrEmpty(Summary) ? "" : "  —  " + Fmt.Trim(Summary, 90));
+    public string Tooltip => Terminal != null
+        ? Terminal.Label + "  (terminal)\n" + ProjectDir + (Terminal.FolderIsStartFolder == true ? "  (start folder)" : "") + "\n" +
+          (Terminal.CommandLine != null
+              ? "Command: " + Fmt.Trim(Terminal.CommandLine, 400) + "\nReopening shows this command and asks before running it." +
+                (TerminalCommands.MayContainSecret(Terminal.CommandLine) ? "\nIt looks like it contains a password or token, which would be stored in the snapshot file as plain text." : "")
+              : "Shell only (nothing is re-run)")
+        : Fmt.TooltipHeader(Nickname, Title, ProjectDir, SessionId) +
+          (Summary != null ? "\nLast message: " + Fmt.Trim(Summary, 300) : "");
 }

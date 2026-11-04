@@ -34,7 +34,7 @@
 
         <DockPanel Grid.Row="1" Margin="0,0,0,6">
             <TextBlock Style="{StaticResource MutedText}" VerticalAlignment="Center"
-                       Text="Tick the sessions to include. Notes are optional (e.g. &quot;waiting on council results&quot;)."
+                       Text="Tick the sessions and terminals to include. Notes are optional (e.g. &quot;waiting on council results&quot;)."
                        TextTrimming="CharacterEllipsis"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Style="{StaticResource LinkButton}" Content="All" Click="All_Click"/>

@@ -31,6 +31,12 @@ public partial class MainWindow : Window
     private sealed record PendingName(string Folder, DateTimeOffset Since, string Name);
     private bool _badgeRefreshBusy;
     private readonly ObservableCollection<RecentRow> _recentRows = new();
+    /// <summary>Terminal sessions that aren't Claude Code (Terminals tab). Read-only detection, like Current.</summary>
+    private readonly TerminalScanner _terminalScanner = new();
+    private readonly ObservableCollection<TerminalRow> _terminalRows = new();
+    private Task? _terminalRefresh;
+    private string _terminalStatus = "";
+    private bool _saving;
     private Task? _currentRefresh;
     private bool _recentLoaded, _recentLoading, _launching;
     private CancellationTokenSource? _recentCts;
@@ -43,6 +49,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         CurrentList.ItemsSource = _currentRows;
         RecentList.ItemsSource = _recentRows;
+        TerminalList.ItemsSource = _terminalRows;
         ShowVersion(BuildInfo.Current, null);
         ShowRuntime(DotNetRuntime.Current, null, null);
         _timer.Tick += async (_, _) => await AutoRefreshAsync();
@@ -58,6 +65,7 @@ public partial class MainWindow : Window
             if (DateTime.UtcNow - _lastCurrentRefresh <= TimeSpan.FromSeconds(3)) return;
             if (TabCurrent.IsChecked == true) await RefreshCurrentAsync();
             else if (TabRecent.IsChecked == true && _recentLoaded) await LoadRecentAsync(quiet: true);
+            else if (TabTerminals.IsChecked == true) await RefreshTerminalsAsync();
             else await RefreshRunningBadgesAsync();
         };
         Closed += (_, _) => { _timer.Stop(); _recentCts?.Cancel(); };
@@ -74,10 +82,13 @@ public partial class MainWindow : Window
     private void Tab_Checked(object sender, RoutedEventArgs e)
     {
         if (!IsLoaded) return;
-        bool cur = TabCurrent.IsChecked == true, rec = TabRecent.IsChecked == true, snap = TabSnapshots.IsChecked == true;
+        bool cur = TabCurrent.IsChecked == true, rec = TabRecent.IsChecked == true, snap = TabSnapshots.IsChecked == true,
+             term = TabTerminals.IsChecked == true;
         PanelCurrent.Visibility = BarCurrent.Visibility = cur ? Visibility.Visible : Visibility.Collapsed;
         PanelRecent.Visibility = BarRecent.Visibility = rec ? Visibility.Visible : Visibility.Collapsed;
         PanelSnapshots.Visibility = BarSnapshots.Visibility = snap ? Visibility.Visible : Visibility.Collapsed;
+        PanelTerminals.Visibility = BarTerminals.Visibility = term ? Visibility.Visible : Visibility.Collapsed;
+        if (term) _ = RefreshTerminalsAsync();
 
         if (cur) _ = RefreshCurrentAsync();
         if (rec && !_recentLoaded) _ = LoadRecentAsync();
@@ -161,6 +172,7 @@ public partial class MainWindow : Window
     {
         StatusText.Text = TabCurrent.IsChecked == true ? _currentStatus
             : TabRecent.IsChecked == true ? _recentStatus
+            : TabTerminals.IsChecked == true ? _terminalStatus
             : _snapshotStatus;
     }
 
@@ -182,6 +194,7 @@ public partial class MainWindow : Window
         if (TabCurrent.IsChecked == true) await RefreshCurrentAsync();
         // Recent: new, changed and closed sessions appear in place (no "Loading…", ticks and scroll kept).
         else if (TabRecent.IsChecked == true && _recentLoaded) await LoadRecentAsync(quiet: true);
+        else if (TabTerminals.IsChecked == true) await RefreshTerminalsAsync();
         else await RefreshRunningBadgesAsync(); // Snapshots: keep the "running" badges current
     }
 
@@ -199,8 +212,8 @@ public partial class MainWindow : Window
             var running = await ScanRunningIdsAsync();
             _runningIds = running;
             foreach (var row in _recentRows) row.IsRunning = running.Contains(row.Info.SessionId);
-            if (SnapshotSessions.ItemsSource is IEnumerable<SnapshotSessionRow> snapRows)
-                foreach (var row in snapRows) row.IsRunning = row.Session.SessionId != null && running.Contains(row.Session.SessionId);
+            if (SnapshotSessions.ItemsSource is System.Collections.IEnumerable snapRows)
+                foreach (var row in snapRows.OfType<SnapshotSessionRow>()) row.IsRunning = row.Session.SessionId != null && running.Contains(row.Session.SessionId);
             _lastCurrentRefresh = DateTime.UtcNow;
         }
         catch (Exception ex)
@@ -283,6 +296,107 @@ public partial class MainWindow : Window
         await RefreshCurrentAsync();
         await SaveSnapshotFromCurrentAsync();
     }
+
+    // ============================================================ terminals
+
+    /// <summary>Starts a terminal scan, or returns the one in flight. Read-only, a few milliseconds.</summary>
+    private Task RefreshTerminalsAsync()
+    {
+        if (_terminalRefresh is { IsCompleted: false }) return _terminalRefresh;
+        return _terminalRefresh = RefreshTerminalsCoreAsync();
+    }
+
+    private async Task RefreshTerminalsCoreAsync()
+    {
+        using var noLaunches = LaunchGuard.Background(); // detection only: it can never launch
+        try
+        {
+            var fresh = await Task.Run(() => _terminalScanner.Scan().Select(t => new TerminalRow(t)).ToList());
+            TerminalRow.Sync(_terminalRows, fresh,
+                added: r => r.PropertyChanged += TerminalRow_PropertyChanged,
+                removed: r => r.PropertyChanged -= TerminalRow_PropertyChanged);
+            TerminalsEmpty.Visibility = _terminalRows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            int agents = _terminalRows.Count(r => r.Session.AgentName != null);
+            _terminalStatus = $"{_terminalRows.Count} terminal{(_terminalRows.Count == 1 ? "" : "s")}" +
+                              (agents > 0 ? $" · {agents} agent{(agents == 1 ? "" : "s")}" : "") + $" · updated {DateTime.Now:HH:mm:ss}";
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+            _terminalStatus = "Refresh failed: " + ex.Message;
+        }
+        finally
+        {
+            UpdateTerminalSelection();
+            UpdateStatus();
+        }
+    }
+
+    private void TerminalRow_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(TerminalRow.IsChecked)) UpdateTerminalSelection();
+    }
+
+    private void UpdateTerminalSelection()
+    {
+        int n = _terminalRows.Count(r => r.IsChecked && r.CanSave);
+        TerminalSelectionText.Text = n == 0 ? "Auto-refreshes every 10 s · tick terminals to save them in a snapshot" : $"{n} ticked";
+    }
+
+    /// <summary>Space ticks the selected terminal.</summary>
+    private void TerminalList_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Space && TerminalList.SelectedItem is TerminalRow { CanSave: true } row &&
+            !IsInside<System.Windows.Controls.Primitives.ButtonBase>(e.OriginalSource as DependencyObject))
+        {
+            row.IsChecked = !row.IsChecked;
+            e.Handled = true;
+        }
+    }
+
+    private async void RefreshTerminals_Click(object sender, RoutedEventArgs e) => await RefreshTerminalsAsync();
+
+    private async void SaveTerminals_Click(object sender, RoutedEventArgs e)
+    {
+        await RefreshCurrentAsync();
+        await SaveSnapshotFromCurrentAsync(allTerminals: true);
+    }
+
+    /// <summary>
+    /// Terminal candidates for the Save dialog. From the Terminals tab every terminal that can be saved is listed
+    /// (the ticked ones pre-ticked); from the other tabs only the ones ticked on the Terminals tab.
+    /// </summary>
+    private async Task<List<SaveCandidate>> TerminalCandidatesAsync(bool all)
+    {
+        if (!all && !_terminalRows.Any(r => r.IsChecked)) return new();
+        try { await RefreshTerminalsAsync(); }
+        catch (Exception ex) { App.Log(ex); }
+        return _terminalRows.Where(r => r.CanSave && (all || r.IsChecked)).Select(r =>
+        {
+            var entry = TerminalCommands.ToSnapshot(r.Session);
+            return new SaveCandidate
+            {
+                ProjectDir = entry.ProjectDir,
+                Title = entry.Label,
+                // A running command whose program path couldn't be read is saved as the shell only: say so.
+                Summary = r.Session.CommandLine != null && entry.CommandLine == null ? "its command can't be saved (program path unknown)" : null,
+                Terminal = entry,
+                IsRunning = true,
+                IsChecked = r.IsChecked,
+            };
+        }).ToList();
+    }
+
+    /// <summary>The live terminals as they'd be saved, to spot saved ones that are still running.</summary>
+    private async Task<List<SnapshotTerminal>> LiveTerminalsAsync()
+    {
+        try { await RefreshTerminalsAsync(); }
+        catch (Exception ex) { App.Log(ex); }
+        return _terminalRows.Select(r => TerminalCommands.ToSnapshot(r.Session)).ToList();
+    }
+
+    private List<TerminalPlan> PlansFor(IEnumerable<SnapshotTerminal> saved, List<SnapshotTerminal> live) =>
+        saved.Select(t => TerminalCommands.Plan(t) with { StillRunning = TerminalCommands.IsStillRunning(t, live) }).ToList();
 
     // ============================================================ recent
 
@@ -462,7 +576,7 @@ public partial class MainWindow : Window
         var snap = item?.File.Snapshot;
         RenameButton.IsEnabled = snap != null;
         DeleteButton.IsEnabled = item != null;
-        RestoreButton.IsEnabled = snap is { Sessions.Count: > 0 };
+        RestoreButton.IsEnabled = snap != null && (snap.Sessions.Count > 0 || TerminalEntries(snap).Count > 0);
 
         SnapshotNote.Text = snap?.Note ?? "";
         SnapshotNote.Visibility = string.IsNullOrWhiteSpace(snap?.Note) ? Visibility.Collapsed : Visibility.Visible;
@@ -476,24 +590,29 @@ public partial class MainWindow : Window
         }
 
         SnapshotTitle.Text = snap.Name;
-        var baseMeta = $"Saved {Fmt.When(snap.CreatedAt)} · {snap.Sessions.Count} session{(snap.Sessions.Count == 1 ? "" : "s")}";
+        var terminals = TerminalEntries(snap);
+        var baseMeta = $"Saved {Fmt.When(snap.CreatedAt)} · {snap.Sessions.Count} session{(snap.Sessions.Count == 1 ? "" : "s")}" +
+                       (terminals.Count > 0 ? $" · {terminals.Count} terminal{(terminals.Count == 1 ? "" : "s")}" : "");
         SnapshotMeta.Text = baseMeta;
         var running = _runningIds;
         var sessions = snap.Sessions.ToList();
         // Folder checks can block on unreachable network paths: do them off the UI thread.
-        var rows = await Task.Run(() => sessions.Select(s => new SnapshotSessionRow
+        var (rows, terminalRows) = await Task.Run(() => (sessions.Select(s => new SnapshotSessionRow
         {
             Session = s,
             FolderMissing = !FolderProbe.Exists(s.ProjectDir),
             IsRunning = s.SessionId != null && running.Contains(s.SessionId),
             Nickname = _names.Get(s.SessionId), // null: falls back to the name saved with the snapshot
-        }).ToList());
+        }).ToList(), terminals.Select(t => new SnapshotTerminalRow { Terminal = t, FolderMissing = !FolderProbe.Exists(t.ProjectDir) }).ToList()));
         if (version != _snapshotDetailsVersion) return; // selection changed meanwhile
 
-        int missing = rows.Count(r => r.FolderMissing);
+        int missing = rows.Count(r => r.FolderMissing) + terminalRows.Count(r => r.FolderMissing);
         SnapshotMeta.Text = baseMeta + (missing > 0 ? $" · {missing} folder{(missing == 1 ? "" : "s")} missing" : "");
-        SnapshotSessions.ItemsSource = rows;
+        SnapshotSessions.ItemsSource = rows.Cast<object>().Concat(terminalRows).ToList();
     }
+
+    /// <summary>A snapshot's terminal entries (anything not marked "terminal" in a hand-edited file is ignored).</summary>
+    private static List<SnapshotTerminal> TerminalEntries(Snapshot snap) => snap.ValidTerminals;
 
     private async void SaveSnapshot_Click(object sender, RoutedEventArgs e)
     {
@@ -504,10 +623,21 @@ public partial class MainWindow : Window
     private async void RestoreSnapshot_Click(object sender, RoutedEventArgs e)
     {
         if ((SnapshotList.SelectedItem as SnapshotListItem)?.File.Snapshot is not { } snap) return;
+        if (_launching) { SetAllStatus("Still opening the previous sessions\u2026"); return; }
         var items = snap.Sessions
+            .Where(s => !s.IsOtherKind) // never restore something else as a Claude session
             .Select(s => new LaunchItem(s.ProjectDir ?? "", SessionStore.IsValidSessionId(s.SessionId) ? s.SessionId : null,
                                         Fmt.FolderName(s.ProjectDir), _names.Get(s.SessionId) ?? NicknameStore.Clean(s.Nickname)))
             .ToList();
+        var terminals = TerminalEntries(snap);
+        if (terminals.Count > 0)
+        {
+            // Never re-run anything on Restore without listing it: every terminal and its exact command is shown,
+            // and only the ticked ones open.
+            var dlg = new TerminalRunWindow(PlansFor(terminals, await LiveTerminalsAsync()), items.Count, "Restore") { Owner = this };
+            if (dlg.ShowDialog() != true) return;
+            items.AddRange(dlg.Items);
+        }
         await ReopenAsync(items, LaunchGuard.Restore);
     }
 
@@ -566,7 +696,15 @@ public partial class MainWindow : Window
 
     // ============================================================ save dialog
 
-    private async Task SaveSnapshotFromCurrentAsync()
+    private async Task SaveSnapshotFromCurrentAsync(bool allTerminals = false)
+    {
+        if (_saving) return; // a second click while the first is still gathering candidates
+        _saving = true;
+        try { await SaveSnapshotFromCurrentCoreAsync(allTerminals); }
+        finally { _saving = false; }
+    }
+
+    private async Task SaveSnapshotFromCurrentCoreAsync(bool allTerminals)
     {
         // Running sessions pre-ticked, plus the last 24h of other sessions unticked.
         var candidates = new List<SaveCandidate>();
@@ -613,6 +751,7 @@ public partial class MainWindow : Window
         {
             App.Log(ex);
         }
+        candidates.AddRange(await TerminalCandidatesAsync(allTerminals));
         ShowSaveDialog(candidates);
     }
 
@@ -817,6 +956,11 @@ public partial class MainWindow : Window
 
     private async Task OpenRowAsync(object row)
     {
+        if (row is SnapshotTerminalRow terminalRow)
+        {
+            await OpenTerminalEntryAsync(terminalRow);
+            return;
+        }
         var (item, reason) = row switch
         {
             CurrentRow c => (c.ToLaunchItem(), c.OpenTooltip),
@@ -830,6 +974,30 @@ public partial class MainWindow : Window
             return;
         }
         await ReopenAsync(new List<LaunchItem> { item }, LaunchGuard.Open);
+    }
+
+    /// <summary>
+    /// Opens one saved terminal. A plain shell opens straight away; anything that would run a command is shown in
+    /// the confirmation first, with the exact text.
+    /// </summary>
+    private async Task OpenTerminalEntryAsync(SnapshotTerminalRow row)
+    {
+        if (!row.CanOpen)
+        {
+            MessageBox.Show(this, row.OpenTooltip + ".", "SessionKeeper", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (_launching) { SetAllStatus("Still opening the previous sessions\u2026"); return; }
+        var plan = PlansFor(new[] { row.Terminal }, await LiveTerminalsAsync())[0];
+        List<LaunchItem> items;
+        if (plan.IsPlainShell && !plan.StillRunning) items = new List<LaunchItem> { new TerminalRunRow(plan).ToLaunchItem() };
+        else
+        {
+            var dlg = new TerminalRunWindow(new[] { plan }, 0, "Open") { Owner = this };
+            if (dlg.ShowDialog() != true || dlg.Items.Count == 0) return;
+            items = dlg.Items;
+        }
+        await ReopenAsync(items, LaunchGuard.Open);
     }
 
     // ============================================================ names (right-click > Rename / F2)
@@ -847,7 +1015,10 @@ public partial class MainWindow : Window
             switch (item.Header as string)
             {
                 case "Open":
-                    item.IsEnabled = row switch { CurrentRow c => c.CanOpen, RecentRow r => r.CanOpen, SnapshotSessionRow s => s.CanOpen, _ => false };
+                    item.IsEnabled = row switch
+                    {
+                        CurrentRow c => c.CanOpen, RecentRow r => r.CanOpen, SnapshotSessionRow s => s.CanOpen, SnapshotTerminalRow t => t.CanOpen, _ => false,
+                    };
                     break;
                 case "Rename…":
                     item.IsEnabled = nameable?.NameableSessionId != null;
@@ -877,6 +1048,11 @@ public partial class MainWindow : Window
     /// <summary>Asks for a new name; an empty name goes back to the session's own title.</summary>
     private void RenameRow(object row)
     {
+        if (row is SnapshotTerminalRow)
+        {
+            SetAllStatus("Terminals keep the label they were saved with"); // only Claude sessions can be named
+            return;
+        }
         if (row is not INameableRow n || n.NameableSessionId is not { } id)
         {
             MessageBox.Show(this, "This row has no session ID yet, so it can't be named. Unmatched or brand-new sessions get one once Claude Code registers them.",
@@ -911,8 +1087,8 @@ public partial class MainWindow : Window
         bool Same(string? id) => string.Equals(id, sessionId, StringComparison.OrdinalIgnoreCase);
         foreach (var r in _currentRows.Where(r => Same(r.NameableSessionId))) r.Nickname = name;
         foreach (var r in _recentRows.Where(r => Same(r.NameableSessionId))) r.Nickname = name;
-        if (SnapshotSessions.ItemsSource is IEnumerable<SnapshotSessionRow> snapRows)
-            foreach (var r in snapRows.Where(r => Same(r.NameableSessionId))) r.Nickname = name;
+        if (SnapshotSessions.ItemsSource is System.Collections.IEnumerable snapRows)
+            foreach (var r in snapRows.OfType<SnapshotSessionRow>().Where(r => Same(r.NameableSessionId))) r.Nickname = name;
     }
 
     // ============================================================ new session

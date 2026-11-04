@@ -1,4 +1,21 @@
-A small Windows app (C# / .NET 8 WPF) that shows which Claude Code sessions are running, saves them as named snapshots, and reopens them later, each in its own PowerShell window or Windows Terminal tab, resuming the same conversation.
+A small Windows app (C# / .NET 8 WPF) that shows which Claude Code sessions are running, saves them as named snapshots, and reopens them later, each in its own PowerShell window or Windows Terminal tab, resuming the same conversation. It can also save and reopen your other terminal sessions, such as other CLI agents, dev servers and plain shells.
+
+## What it does
+
+| Feature | What you get | Where |
+|---|---|---|
+| **See what's running** | Every running Claude Code session with its title, folder, last message and status (*working*, *needs input*, *idle*…), refreshed every 10 seconds. | [Current tab](#current-tab-whats-running-now) |
+| **Reopen past sessions** | Sessions from the last 24 hours to 30 days, newest first. Tick some and reopen them, each resuming its conversation. | [Recent tab](#recent-tab-reopen-past-sessions) |
+| **Snapshots** | Save a set of sessions (and terminals) with a name and notes, for example at the end of the day, and restore them all with one click later. | [Snapshots](#snapshots-save-and-restore-a-set-of-sessions) |
+| **Other terminals** | Lists terminal sessions that aren't Claude Code (Codex CLI, Gemini CLI, Aider, Copilot CLI, `npm run dev`, plain shells) with their folder, command and uptime, so you can save them in a snapshot too. | [Terminals tab](#terminals-tab-other-agents-programs-and-shells) |
+| **Safe reopening of terminals** | A saved terminal reopens in its folder. Its command runs again only after you've seen the exact text, and commands that look destructive start unticked with a warning. | [Reopening terminals](#reopening-terminals) |
+| **Open one session** | Open any row with its **Open** button, a double-click or Enter. You're warned before a second copy of a running session opens. | [Opening a session](#opening-a-session) |
+| **Names** | Give a session your own name. It's shown on every tab and becomes its window or tab title. | [Naming sessions](#naming-sessions) |
+| **New session** | Start a fresh Claude Code session in a recent or chosen folder, optionally named. | [Starting a new session](#starting-a-new-session) |
+| **Windows integration** | PowerShell windows or Windows Terminal tabs, Start with Windows (in the tray), a Start menu shortcut. | [Settings](#settings) |
+| **Version footer** | Shows the build, warns when your clone has newer app changes than your installed copy, and checks the .NET runtime. | [Reading the version footer](#reading-the-version-footer) |
+| **Command line and skill** | List running, recent and saved sessions or save a snapshot from a terminal, or just ask Claude Code. | [Command line](#command-line), [Claude Code skill](#claude-code-skill) |
+| **Safety** | Launches only when you click, every launch logged, no command injection, read-only towards Claude Code and towards the processes it inspects. | [Safety](#safety) |
 
 ## Install / Update
 
@@ -40,7 +57,7 @@ You need Windows 10 or 11 and the [.NET 8 SDK](https://dotnet.microsoft.com/down
 
 ## Using SessionKeeper
 
-Open **SessionKeeper** from the Start menu. The window has three tabs at the top, **Current**, **Recent** and **Snapshots**, and a gear button at the top right for Settings. Every tab's bottom bar has a **New session…** button. Hover over any row to see its full folder path and the first 8 characters of its session ID. The tooltip also shows the last message on Current rows, and the first and last messages on Recent rows.
+Open **SessionKeeper** from the Start menu. The window has four tabs at the top, **Current**, **Recent**, **Snapshots** and **Terminals**, and a gear button at the top right for Settings. The first three tabs' bottom bars have a **New session…** button. Hover over any row to see its full folder path and the first 8 characters of its session ID. The tooltip also shows the last message on Current rows, and the first and last messages on Recent rows.
 
 ### Current tab: what's running now
 
@@ -93,7 +110,7 @@ Names you give a session inside Claude Code itself (its rename command, or `clau
 
 ### Starting a new session
 
-1. Click **New session…** in the bottom bar (on any tab).
+1. Click **New session…** in the bottom bar (on the Current, Recent or Snapshots tab).
 2. Pick the project folder:
    - Click one under **Recent project folders** (folders of running and recent sessions), or
    - Click **Browse…** to choose any folder, or type its full path.
@@ -126,8 +143,11 @@ Each row shows the last-active time and the first 8 characters of its session ID
 
 You can also save from the **Recent** tab: tick sessions, then click **Save selected as snapshot…**. On the **Snapshots** tab, **Save snapshot…** opens the same dialog as on the Current tab.
 
+Terminals you've ticked on the [Terminals tab](#terminals-tab-other-agents-programs-and-shells) are listed too, already ticked. Saving from the Terminals tab itself lists every terminal that can be saved, with your ticked ones ticked. A terminal whose command looks like it contains a password or token is marked **may contain a password or token**, because the command is stored in the snapshot file as plain text.
+
 **What gets saved**
 - For each session: its session ID, project folder, your name for it (if any), its title, last message, last-active time and your note.
+- For each terminal: its label, type (agent, program or shell), folder, shell, and the command line of the program running in it. They go in a separate `terminals` list, each entry marked `"kind": "terminal"`, so an older SessionKeeper never mistakes one for a Claude session. (An older version shows a snapshot that holds only terminals as "0 sessions", but keeps the terminals if you rename it.) Entries without `"kind": "terminal"`, or that can't be read, are ignored without affecting the rest of the snapshot.
 - For the snapshot: its name, when it was saved and its note.
 - One readable JSON file per snapshot, in `%APPDATA%\SessionKeeper\snapshots\`, named like `2026-11-03_184000_end-of-day.json`. On the Snapshots tab, **Open folder** opens this folder.
 - A running session with no messages yet is saved without a session ID. Restoring it starts a new session in that folder.
@@ -141,17 +161,72 @@ You can also save from the **Recent** tab: tick sessions, then click **Save sele
    - You're asked to confirm if more than 10 would open.
 5. If any entries were skipped, for example because their folder no longer exists or their conversation file has gone, a message lists them and the reason.
 
-You can also open a single session from a snapshot with its **Open** button.
+If the snapshot has terminals, **Restore** first shows the **Reopen terminals** dialog, which lists every terminal and the exact command it would run. Only the ticked terminals open. See [Reopening terminals](#reopening-terminals).
+
+You can also open a single session or terminal from a snapshot with its **Open** button.
 
 **Manage snapshots**
 - **Rename:** select a snapshot, click **Rename…**, type the new name and click **OK**. The file is renamed to match.
 - **Delete:** select a snapshot, click **Delete** and confirm. The file goes to the Recycle Bin, and Claude Code's own sessions aren't affected.
 - **Missing folders:** if a session's folder has been moved or deleted, the snapshot still lists it with a **folder missing** badge, and the header counts the missing folders. **Restore** skips those sessions and says so. The rest of the snapshot still opens.
 
+### Terminals tab: other agents, programs and shells
+
+The **Terminals** tab lists the terminal sessions that aren't Claude Code: other CLI agents (Codex CLI, Gemini CLI, Aider, GitHub Copilot CLI and others), programs such as `npm run dev`, and plain shells. Claude Code sessions are left out, because they have their own tabs, and so is SessionKeeper itself.
+
+1. Click the **Terminals** tab.
+2. Read each row:
+   - **Bold label:** the agent's name if SessionKeeper recognises it, otherwise the shell ("PowerShell", "Command Prompt", "Bash") or, for a tab that runs a program directly, the program.
+   - **Grey text on the right:** the folder. Hover over it for the full path.
+   - **Second line:** the command running in it, shortened (for example `npm run dev`). Hover over it for the full command line. *(at the prompt)* means the shell is idle.
+   - **Right-hand side:** how long the terminal has been open, and its type: *agent*, *program* or *shell*.
+3. Hover over a row for the details: the shell, whether it's a Windows Terminal tab or a console window, when the command started, and the process IDs.
+4. The list refreshes every 10 seconds while the tab is showing. Click **Refresh** to update it straight away.
+5. To save terminals, tick them and click **Save snapshot…**. The Save snapshot dialog opens with those terminals ticked, alongside your running Claude Code sessions. Rows whose folder is unknown can't be ticked. Terminals you've ticked here are also offered when you save from the Current or Snapshots tab.
+
+**What it can and can't see**
+- **Found:** Windows Terminal tabs and panes, and classic console windows. A tab is recognised by the hidden window Windows Terminal gives each tab; a console window counts only if it's visible, so the hidden consoles of background tools don't appear.
+- **Folder:** for a running program, its own folder, which is reliable. For an idle Command Prompt, its current folder. For an idle PowerShell, only the folder it *started* in, because PowerShell's `cd` doesn't change what Windows reports. Those rows say so in the tooltip, and the snapshot records it. Git Bash and other shells are treated like PowerShell.
+- **WSL:** the Linux folder and the programs running inside WSL can't be seen from Windows.
+- **Window titles aren't used:** Windows Terminal only exposes the active tab's title, so it can't be matched to the other tabs.
+- **Elevated terminals** (Run as administrator) show "folder unknown" and no command, because a normal app can't read them.
+- **Several programs at once:** the row shows a recognised agent if there is one, otherwise the most recently started program.
+- **Only what runs in that terminal counts.** Windowed programs started from it (`notepad`, `code .`) aren't its command. A new console started from it (`start cmd`) is listed as its own row.
+- **Agents** are recognised by their exe name, or by the script that node or python runs. So `npm i -g @openai/codex` is a program, not Codex.
+- **Other terminal apps** (VS Code's terminal and so on) aren't listed. Hosts are listed in `KnownAgents.TerminalHosts`.
+
+**Adding an agent:** agents are recognised by one list, `KnownAgents.Agents` in `src/SessionKeeper/Services/KnownAgents.cs`. Add one line with the name, the exe name and, for npm-installed agents, the package name as it appears in node's command line, for example `@openai/codex`.
+
+### Reopening terminals
+
+A saved terminal reopens in a new PowerShell window or Windows Terminal tab (the same [setting](#settings) as Claude sessions), in its folder. Nothing that would run a command starts without the **Reopen terminals** dialog first.
+
+1. On the **Snapshots** tab, click **Restore**, or click **Open** on a terminal row.
+2. The **Reopen terminals** dialog lists each terminal with the exact command that will run, built from the same values that are launched. A terminal that's still running right now (the same command or agent in the same folder) says so and starts unticked, because reopening it would start a second copy.
+3. For each terminal, choose:
+   - **Run the command again:** starts the same program with the same arguments.
+   - **Resume …'s last conversation:** shown only for an agent with a resume option SessionKeeper has verified. At the moment no agent has one: none of them was installed where this version was built, so none could be checked against the agent's own `--help`. To add one after checking it, give the agent a `Resume:` entry in `KnownAgents.Agents`.
+   - **Open … only:** just the shell, in the folder.
+4. Commands that look destructive are shown with a red warning and left **unticked**. Tick one only if you mean to run it. Switching a row to a destructive choice unticks it again. The check covers:
+   - delete, format and wipe commands: `rm` (and `rm -rf`), `del`, `rd`, `format`, `Remove-Item`, `Clear-Content`, `diskpart`, `dd of=`, `robocopy /mir`;
+   - git commands that lose work: `git push`, `git reset --hard`, `git checkout -- .`, `git restore`, `git clean`, `git stash drop`, `git branch -D`, `git rebase`;
+   - `shutdown`, `taskkill`, `Stop-Process`, `reg delete`, `docker … prune`, `kubectl delete`, `terraform destroy` and similar;
+   - code you can't read: PowerShell `-EncodedCommand` and `Invoke-Expression`.
+
+   It also sees through `cmd` escapes such as `d^el` and full paths such as `C:\…\git.exe push`. It's a heuristic over the command line: it can't see inside scripts or batch files, and `npm run dev` runs whatever the project's `package.json` says today.
+5. Tick the terminals to open, then click **Restore** (or **Open**).
+
+An idle Command Prompt or PowerShell has nothing to run, so its **Open** button opens it straight away. Restore always shows the dialog.
+
+**What re-running means**
+- The program is started with its full path and its original arguments, passed to Windows exactly as saved. Nothing is re-typed into a shell. A command that went through `cmd /c` (PowerShell does this for `npm` and other `.cmd` files) runs through `cmd /c` again, as before.
+- The environment is the new window's, not the old one's. For example, an activated Python virtual environment or variables set by hand in the old shell aren't there.
+- Only an `.exe` given by a plain local full path is ever run: not a network or device path, not one with `..` in it. A saved command that's anything else, or that contains line breaks, control or escape characters, or invisible characters that could make it look different from what runs (such as right-to-left overrides or zero-width spaces), or is longer than 4,000 characters, isn't offered. The dialog says why and offers the shell only.
+
 ### Settings
 
 1. Click the gear button at the top right.
-2. Choose how sessions open under **Open sessions in**. This applies to **Open**, **Reopen selected** and **Restore**.
+2. Choose how sessions open under **Open sessions in**. This applies to **Open**, **Reopen selected**, **Restore**, **New session** and reopened terminals.
    - **PowerShell window** (the default): each session opens in its own Windows PowerShell window.
    - **Windows Terminal tab:** sessions open as tabs in a Windows Terminal window. This option is greyed out if Terminal isn't installed.
 3. Optionally, tick **Start with Windows**. SessionKeeper then starts in the system tray when you sign in. Click the tray icon to open it, or right-click it and choose **Exit**. It's off by default.
@@ -191,7 +266,7 @@ The same exe has command-line options. It never opens the window when you use th
 ```text
 SessionKeeper.exe --list [--json]                         running sessions
 SessionKeeper.exe --recent [--days N] [--json]            sessions active in the last N days (default 1)
-SessionKeeper.exe --snapshots [--json]                    saved snapshots
+SessionKeeper.exe --snapshots [--json]                    saved snapshots (with how many terminals each has)
 SessionKeeper.exe --snapshot ["note"] [--name "name"] [--json]   save the running sessions
 SessionKeeper.exe --install-shortcut                      add the Start menu shortcut
 SessionKeeper.exe --help | --version
@@ -248,6 +323,8 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
 | Folder checks | Done off the UI thread and cached, so an offline network drive can't freeze the window. |
 | Opening sessions | **PowerShell window:** `conhost.exe powershell -NoExit -EncodedCommand …`. Starting through conhost keeps it a real PowerShell window even when Windows' default terminal is Windows Terminal. **Windows Terminal tab:** `wt -w <name> new-tab -d <folder> powershell -NoExit -EncodedCommand …`. Both run `claude --resume <id>` in the session's folder. |
 | Snapshots | Readable JSON in `%APPDATA%\SessionKeeper\snapshots\`, with an optional note for the whole snapshot and per-session notes. |
+| Terminal sessions | One process-list snapshot (PID, parent, exe name), one pass over the desktop's console windows (class and owner only), then query-only handles on each terminal's own processes for the command line, start time and folder. Parent links are checked against start times, so a reused process ID can't attach a program to the wrong terminal. A scan takes a few milliseconds. |
+| Reopening terminals | The same window or tab as Claude sessions. The script enters the folder, then starts the saved program through .NET's process API with the saved arguments as one string, so neither PowerShell nor SessionKeeper parses them. |
 
 `CLAUDE_CONFIG_DIR` is respected if set.
 
@@ -261,7 +338,10 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
   - The only background process is the read-only `git` query described above, run under the same rules.
 - **Launch log.** Every launch, every refused attempt, each user action, and app start and exit are logged with a timestamp and the calling source line. The logs are in `%APPDATA%\SessionKeeper\logs\launches-yyyy-MM-dd.log` and kept for 14 days. If a window ever opens that you didn't ask for, check the log for that time: no `LAUNCH` line means SessionKeeper didn't open it.
   - **What's in it:** the program started and the first 300 characters of its arguments (which can include a full folder path and, for Windows Terminal, the tab title, so your session name), a purpose line with the folder names of the sessions opened, and, for the version check, the repository folder and git arguments. The session scripts themselves are base64, cut off at 300 characters. Snapshot notes are never logged.
+  - `COMMAND` lines for reopened terminals: the label, folder and the full command that ran (at most 4,000 characters), with likely passwords, tokens and keys replaced by `***`. The snapshot file itself stores the command unredacted, so it can be re-run, which is why the Save dialog marks commands that look like they contain one.
+  - Every log line is one line: line breaks, control characters and invisible characters in a label, folder or command are written as `\uXXXX`, so nothing can forge or hide a log entry.
   - Also logged: `DEBUG` lines when a registry entry is rejected because its process start time doesn't match (once per process, to make a future registry format change visible), and `ENV` lines naming (never showing the values of) unrecognised `CLAUDE*` variables passed on to a launched session.
+- **Read-only detection.** The Terminals tab only reads: a process list, window classes and owners, command lines, start times and folders through query-only handles, and the headers of exe files on disk (to tell windowed programs from console ones). It never kills, signals, modifies or injects into any process.
 - **Read-only towards Claude Code.** Session files and registry entries are opened read-only with full sharing. Processes are opened with query/read rights only. The app never writes to, deletes from or kills anything in Claude Code's files or processes. The one exception is the installer (not the app), which adds the skill folder described under [Install](#install--update).
 - **No command injection.**
   - Folder names, session names, titles and notes are never parsed as commands.
@@ -269,6 +349,9 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
   - Windows Terminal tab titles are reduced to letters, digits, spaces and harmless punctuation, never `;`, `%`, quotes or backslashes. A title starting with `-` gets a `_` in front, so wt can't read it as one of its options.
   - A folder containing `;` or `%` is not passed to `-d` at all, because wt splits on `;` and expands `%VAR%`.
   - Session names are cleaned of control and invisible characters and capped at 80 characters. Notes are never passed to any process.
+  - A reopened terminal's program and arguments go into the script as two such literals and are handed to Windows unchanged, never to PowerShell's own command parsing. A test runs a generated script with `$(...)`, quotes and backticks in the arguments and checks they arrive byte for byte.
+  - A terminal command never runs without being shown first, and Restore always lists every terminal. Commands that look destructive start unticked with a warning. An idle shell opens without the dialog only if nothing was saved to run and it's Windows PowerShell (the window itself) or `cmd.exe`/`wsl.exe` from `System32`. Any other shell path saved in a snapshot (which can be hand-edited) is shown in the dialog first.
+  - Labels from a snapshot file are cleaned of control, escape and invisible characters before they're shown or written to the console, so a label can't send terminal escape sequences.
 - **The right folder, the right claude.**
   - If the script can't enter the folder, it stops instead of starting claude somewhere else.
   - `claude` is resolved to a full path, and relative `PATH` entries are ignored, so a repository can't plant its own `claude.cmd`.
@@ -280,4 +363,5 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
 
 - Claude Code's registry and file formats are internal and could change in a future version. If they do, the Current tab falls back to listing *unmatched* processes.
 - Node-based installs (`node.exe … claude-code`) are matched through the registry only. They won't appear as *unmatched* when unregistered.
+- The Terminals tab has its own limits: see [What it can and can't see](#terminals-tab-other-agents-programs-and-shells).
 - `claude.exe` is found in `%USERPROFILE%\.local\bin`, then on `PATH`, then as npm's `claude.cmd`. If none of these exist, the windows run `claude` and rely on `PATH`.

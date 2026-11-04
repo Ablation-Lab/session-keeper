@@ -1,6 +1,7 @@
 ﻿<Window x:Class="SessionKeeper.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:SessionKeeper.ViewModels"
         Style="{StaticResource AppWindow}"
         Title="SessionKeeper" Width="920" Height="540" MinWidth="560" MinHeight="380"
         WindowStartupLocation="CenterScreen">
@@ -55,6 +56,8 @@
                 <RadioButton x:Name="TabCurrent" Style="{StaticResource TabButton}" Content="Current" IsChecked="True" Checked="Tab_Checked"/>
                 <RadioButton x:Name="TabRecent" Style="{StaticResource TabButton}" Content="Recent" Checked="Tab_Checked"/>
                 <RadioButton x:Name="TabSnapshots" Style="{StaticResource TabButton}" Content="Snapshots" Checked="Tab_Checked"/>
+                <RadioButton x:Name="TabTerminals" Style="{StaticResource TabButton}" Content="Terminals" Checked="Tab_Checked"
+                             ToolTip="Other terminal sessions: CLI agents, programs and shells that aren't Claude Code"/>
             </StackPanel>
             <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Margin="8,0,0,0" Padding="6,2"
                     Content="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"
@@ -213,8 +216,41 @@
                 </StackPanel>
                 <ListBox x:Name="SnapshotSessions" Grid.Row="1" Style="{StaticResource RowList}"
                          ItemContainerStyle="{StaticResource OpenableItem}" PreviewKeyDown="SessionList_PreviewKeyDown">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
+                    <ListBox.Resources>
+                        <DataTemplate DataType="{x:Type vm:SnapshotTerminalRow}">
+                            <Grid Background="Transparent">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel ToolTip="{Binding Tooltip}" Background="Transparent">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding MainLabel}" Style="{StaticResource FolderText}"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <Border Style="{StaticResource Badge}" Background="{StaticResource Raised}" BorderBrush="{StaticResource Border}" BorderThickness="1">
+                                                <TextBlock Text="terminal" FontSize="11" Foreground="{StaticResource Muted}"/>
+                                            </Border>
+                                            <Border Style="{StaticResource Badge}" Background="{StaticResource Warn}" Visibility="{Binding MissingVisibility}">
+                                                <TextBlock Text="folder missing" FontSize="11" Foreground="{StaticResource AccentText}"/>
+                                            </Border>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" Text="{Binding SecondaryText}" Style="{StaticResource SecondaryLabel}" MaxWidth="220"
+                                                   ToolTip="{Binding Terminal.ProjectDir}"/>
+                                    </Grid>
+                                    <TextBlock Text="{Binding Summary}" Style="{StaticResource MonoText}" FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
+                                    <TextBlock Text="{Binding Note}" Foreground="{StaticResource Note}" FontStyle="Italic" FontSize="12"
+                                               TextWrapping="Wrap" Margin="0,3,0,0" Visibility="{Binding NoteVisibility}"/>
+                                </StackPanel>
+                                <Button Grid.Column="1" Style="{StaticResource RowOpenButton}" Click="Open_Click"
+                                        IsEnabled="{Binding CanOpen}" ToolTip="{Binding OpenTooltip}"/>
+                            </Grid>
+                        </DataTemplate>
+                        <DataTemplate DataType="{x:Type vm:SnapshotSessionRow}">
                             <Grid Background="Transparent">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -247,9 +283,49 @@
                                     IsEnabled="{Binding CanOpen}" ToolTip="{Binding OpenTooltip}"/>
                             </Grid>
                         </DataTemplate>
-                    </ListBox.ItemTemplate>
+                    </ListBox.Resources>
                 </ListBox>
             </Grid>
+        </Grid>
+
+        <!-- ============================== TERMINALS ============================== -->
+        <Grid x:Name="PanelTerminals" Grid.Row="1" Visibility="Collapsed">
+            <ListBox x:Name="TerminalList" Style="{StaticResource RowList}" PreviewKeyDown="TerminalList_PreviewKeyDown"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid ToolTip="{Binding Tooltip}" Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" IsEnabled="{Binding CanSave}" VerticalAlignment="Top" Margin="0,2,10,0"
+                                      AutomationProperties.Name="{Binding Label}" ToolTip="Tick to include it when you save a snapshot"/>
+                            <StackPanel Grid.Column="1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Label}" Style="{StaticResource FolderText}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding FolderText}" Style="{StaticResource SecondaryLabel}" MaxWidth="260"
+                                               ToolTip="{Binding FolderTooltip}"/>
+                                </Grid>
+                                <TextBlock Text="{Binding CommandText}" Style="{StaticResource MonoText}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                           Margin="0,3,0,0" ToolTip="{Binding CommandTooltip}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Margin="12,0,0,0" HorizontalAlignment="Right">
+                                <TextBlock Text="{Binding UptimeText}" Style="{StaticResource MutedText}" HorizontalAlignment="Right"/>
+                                <TextBlock Text="{Binding TypeText}" Foreground="{Binding TypeBrush}" FontSize="12" HorizontalAlignment="Right" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock x:Name="TerminalsEmpty" Style="{StaticResource MutedText}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                       TextAlignment="Center" TextWrapping="Wrap" Margin="12" Visibility="Collapsed"
+                       Text="No other terminal sessions are open.&#x0a;Claude Code sessions are on the Current tab."/>
         </Grid>
 
         <!-- ============================== BOTTOM BARS ============================== -->
@@ -289,6 +365,14 @@
                 <Button x:Name="RenameButton" Content="Rename…" Click="RenameSnapshot_Click"/>
                 <Button x:Name="DeleteButton" Content="Delete" Click="DeleteSnapshot_Click"/>
                 <Button x:Name="RestoreButton" Style="{StaticResource PrimaryButton}" Content="Restore" Click="RestoreSnapshot_Click"/>
+            </StackPanel>
+        </DockPanel>
+        <DockPanel x:Name="BarTerminals" Grid.Row="2" Margin="0,10,0,0" Visibility="Collapsed">
+            <TextBlock x:Name="TerminalSelectionText" Style="{StaticResource MutedText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Refresh" Click="RefreshTerminals_Click"/>
+                <Button x:Name="SaveTerminalsButton" Style="{StaticResource PrimaryButton}" Content="Save snapshot…" Click="SaveTerminals_Click"
+                        ToolTip="Save a snapshot: the ticked terminals, plus your running Claude Code sessions"/>
             </StackPanel>
         </DockPanel>
     </Grid>

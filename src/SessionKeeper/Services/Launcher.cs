@@ -7,8 +7,10 @@ namespace SessionKeeper.Services;
 /// <summary>
 /// One window/tab to open. SessionId null = start a fresh claude in the folder. Title (the session's nickname)
 /// becomes the window/tab title and is kept there (Claude's own title updates are switched off for it).
+/// With <paramref name="Terminal"/> set it's a terminal session instead (no claude): the shell opens in the
+/// folder and runs that command, which the user has confirmed.
 /// </summary>
-public sealed record LaunchItem(string ProjectDir, string? SessionId, string Label, string? Title = null);
+public sealed record LaunchItem(string ProjectDir, string? SessionId, string Label, string? Title = null, TerminalCommand? Terminal = null);
 
 public sealed class LaunchResult
 {
@@ -91,8 +93,9 @@ public static class Launcher
     public static LaunchResult Launch(IReadOnlyList<LaunchItem> items, OpenMode mode = OpenMode.PowerShellWindow)
     {
         var result = new LaunchResult();
-        var claude = FindClaude();
-        result.ClaudeNotFound = claude == null;
+        bool anyClaude = items.Any(i => i.Terminal == null);
+        var claude = anyClaude ? FindClaude() : null;
+        result.ClaudeNotFound = anyClaude && claude == null;
         claude ??= "claude";
         bool claudeIsBatch = claude.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) ||
                              claude.EndsWith(".bat", StringComparison.OrdinalIgnoreCase);
@@ -102,7 +105,7 @@ public static class Launcher
         {
             if (Validate(it) is { } why) result.Skipped.Add($"{it.Label}: {why}");
             // cmd.exe can't use a UNC current directory and silently falls back to C:\Windows.
-            else if (claudeIsBatch && it.ProjectDir.StartsWith(@"\\", StringComparison.Ordinal))
+            else if (it.Terminal == null && claudeIsBatch && it.ProjectDir.StartsWith(@"\\", StringComparison.Ordinal))
                 result.Skipped.Add($"{it.Label}: network (UNC) folders aren't supported with the npm claude.cmd");
             else valid.Add(it);
         }
@@ -147,7 +150,35 @@ public static class Launcher
             return "folder path is not valid";
         }
         if (it.SessionId != null && !SessionStore.IsValidSessionId(it.SessionId)) return "invalid session id";
+        if (it.Terminal is { } t) return ValidateTerminal(t, it.SessionId);
         return null;
+    }
+
+    /// <summary>A terminal command must name an existing .exe by full path, with arguments on one line.</summary>
+    internal static string? ValidateTerminal(TerminalCommand t, string? sessionId)
+    {
+        if (sessionId != null) return "a terminal entry can't carry a Claude session id";
+        if (t.Args.Length > TerminalCommands.MaxCommandLength) return "the command is too long";
+        if (ValidateTerminalShape(t) is { } why) return why;
+        if (t.Exe == null) return null;
+        try
+        {
+            if (!File.Exists(t.Exe)) return "the program no longer exists (" + t.Exe + ")";
+        }
+        catch (Exception)
+        {
+            return "the program path is not valid";
+        }
+        return null;
+    }
+
+    /// <summary>The checks that don't touch the disk (BuildTerminalScript runs them again before building).</summary>
+    private static string? ValidateTerminalShape(TerminalCommand t)
+    {
+        // No control, escape, bidi or invisible characters: what the confirmation showed must be what runs.
+        if (TerminalCommands.HiddenCharacter(t.Args, allowTab: true) is { } hidden) return "the command contains " + hidden;
+        if (t.Exe == null) return t.Args.Length == 0 ? null : "arguments without a program";
+        return TerminalCommands.CheckExe(t.Exe);
     }
 
     private static bool HasLoneSurrogate(string s)
@@ -191,6 +222,7 @@ public static class Launcher
     /// </summary>
     public static string BuildScript(LaunchItem it, string claude, string? configDir = null)
     {
+        if (it.Terminal != null) return BuildTerminalScript(it);
         if (it.SessionId != null && !SessionStore.IsValidSessionId(it.SessionId))
             throw new ArgumentException("Invalid session id", nameof(it));
         var sb = new StringBuilder();
@@ -209,6 +241,39 @@ public static class Launcher
           .Append(" -ForegroundColor DarkGray; ");
         sb.Append("& ").Append(PsQuote(claude));
         if (it.SessionId != null) sb.Append(" --resume ").Append(it.SessionId);
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// The script for a terminal entry. As with Claude sessions, every dynamic value is a PsQuote literal. The
+    /// command is not PowerShell text: the program's path and its argument string go into a ProcessStartInfo, so
+    /// Windows receives the arguments exactly as saved, and nothing in them is interpreted by PowerShell. The
+    /// program shares the window's console (interactive programs work) and the shell stays open afterwards.
+    /// </summary>
+    public static string BuildTerminalScript(LaunchItem it)
+    {
+        var t = it.Terminal ?? throw new ArgumentException("Not a terminal entry", nameof(it));
+        if (ValidateTerminalShape(t) is { } why) throw new ArgumentException(why, nameof(it));
+        // The label is shown in the console, so it's cleaned of control and escape characters (no terminal sequences).
+        var label = NicknameStore.Clean(it.Label) ?? "terminal";
+        var sb = new StringBuilder();
+        sb.Append("$ErrorActionPreference = 'Stop'; ");
+        sb.Append("$env:NoDefaultCurrentDirectoryInExePath = '1'; ");
+        sb.Append("try { $Host.UI.RawUI.WindowTitle = ").Append(PsQuote(SafeTitle(NicknameStore.Clean(it.Title) ?? label))).Append(" } catch { }; ");
+        sb.Append("Set-Location -LiteralPath ").Append(PsQuote(it.ProjectDir)).Append("; ");
+        sb.Append("$ErrorActionPreference = 'Continue'; ");
+        sb.Append("Write-Host ").Append(PsQuote("SessionKeeper: " + label + " in " + it.ProjectDir)).Append(" -ForegroundColor DarkGray; ");
+        if (t.Exe != null)
+        {
+            sb.Append("Write-Host ").Append(PsQuote("SessionKeeper: running " + t.Display)).Append(" -ForegroundColor DarkGray; ");
+            sb.Append("$skStart = New-Object System.Diagnostics.ProcessStartInfo; ");
+            sb.Append("$skStart.FileName = ").Append(PsQuote(t.Exe)).Append("; ");
+            sb.Append("$skStart.Arguments = ").Append(PsQuote(t.Args)).Append("; ");
+            sb.Append("$skStart.UseShellExecute = $false; ");
+            sb.Append("$skStart.WorkingDirectory = ").Append(PsQuote(it.ProjectDir)).Append("; ");
+            sb.Append("try { $skProcess = [System.Diagnostics.Process]::Start($skStart); $skProcess.WaitForExit() } ");
+            sb.Append("catch { Write-Host ('SessionKeeper: could not start it: ' + $_.Exception.Message) -ForegroundColor Red }");
+        }
         return sb.ToString();
     }
 
@@ -258,8 +323,8 @@ public static class Launcher
     /// </summary>
     public static string BuildTabArgs(LaunchItem it, string claude, string? configDir = null)
     {
-        var nickname = NicknameStore.Clean(it.Title);
-        var sb = new StringBuilder("new-tab --title ").Append(WinQuote(SafeTitle(nickname ?? it.Label)));
+        var nickname = it.Terminal == null ? NicknameStore.Clean(it.Title) : null;
+        var sb = new StringBuilder("new-tab --title ").Append(WinQuote(SafeTitle(nickname ?? it.Title ?? it.Label)));
         if (nickname != null) sb.Append(" --suppressApplicationTitle");
         if (it.ProjectDir.IndexOfAny(new[] { ';', '%' }) < 0) sb.Append(" -d ").Append(WinQuote(it.ProjectDir));
         sb.Append(' ').Append(WinQuote(PowerShellPath)).Append(" -NoLogo -NoExit -EncodedCommand ")
@@ -303,6 +368,7 @@ public static class Launcher
         {
             var psi = new ProcessStartInfo(wt, lines[i].CommandLine) { UseShellExecute = false };
             CleanEnvironment(psi);
+            foreach (var it in lines[i].Items) LogTerminalCommand(it);
             var labels = string.Join(", ", lines[i].Items.Select(x => x.Label));
             using (LaunchGuard.Start(psi, $"Windows Terminal: {lines[i].Items.Count} tab(s): {labels}")) { }
             result.OpenedItems.AddRange(lines[i].Items); // record each chunk as it succeeds
@@ -314,7 +380,20 @@ public static class Launcher
     {
         var psi = BuildPowerShellWindowStart(it, claude, configDir);
         CleanEnvironment(psi);
+        LogTerminalCommand(it);
         using (LaunchGuard.Start(psi, $"PowerShell window: {it.Label}")) { }
+    }
+
+    /// <summary>
+    /// The launch log records each terminal command in plain text (the window's own command line is base64), in
+    /// full (at most 4,000 characters), so the log shows what actually ran. Likely passwords, tokens and keys are
+    /// replaced by *** first.
+    /// </summary>
+    private static void LogTerminalCommand(LaunchItem it)
+    {
+        if (it.Terminal is not { } t) return;
+        var run = t.Exe == null ? "(shell only)" : TerminalCommands.Redact(t.Display);
+        LaunchGuard.LogEvent("COMMAND", $"action={LaunchGuard.CurrentAction ?? "(none)"}  label={NicknameStore.Clean(it.Label)}  folder={it.ProjectDir}  run={run}");
     }
 
     /// <summary>

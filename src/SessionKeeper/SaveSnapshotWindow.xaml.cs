@@ -64,7 +64,14 @@ public partial class SaveSnapshotWindow : Window
             Name = name,
             CreatedAt = DateTimeOffset.Now,
             Note = string.IsNullOrWhiteSpace(SnapshotNoteBox.Text) ? null : SnapshotNoteBox.Text.Trim(),
-            Sessions = picked.Select(c => new SnapshotSession
+            Terminals = picked.Any(c => c.Terminal != null)
+                ? picked.Where(c => c.Terminal != null).Select(c =>
+                {
+                    c.Terminal!.Note = string.IsNullOrWhiteSpace(c.Note) ? null : c.Note.Trim();
+                    return c.Terminal;
+                }).ToList()
+                : null,
+            Sessions = picked.Where(c => c.Terminal == null).Select(c => new SnapshotSession
             {
                 SessionId = c.SessionId,
                 ProjectDir = c.ProjectDir,

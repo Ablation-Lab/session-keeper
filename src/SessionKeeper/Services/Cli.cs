@@ -231,6 +231,7 @@ public static class Cli
                 createdAt = f.Snapshot?.CreatedAt,
                 note = f.Snapshot?.Note,
                 sessions = f.Snapshot?.Sessions.Count,
+                terminals = f.Snapshot?.ValidTerminals.Count,
                 file = f.Path,
                 error = f.Error,
             }), Json));
@@ -247,6 +248,7 @@ public static class Cli
                 continue;
             }
             w.WriteLine($"  {Fmt.When(s.CreatedAt),-16} {s.Name}  ·  {s.Sessions.Count} session{(s.Sessions.Count == 1 ? "" : "s")}" +
+                        (s.ValidTerminals is { Count: > 0 } t ? $"  ·  {t.Count} terminal{(t.Count == 1 ? "" : "s")}" : "") +
                         (s.Note != null ? $"  ·  {Fmt.Trim(s.Note, 80)}" : ""));
         }
         return 0;

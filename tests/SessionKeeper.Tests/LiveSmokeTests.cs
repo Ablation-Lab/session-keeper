@@ -42,5 +42,25 @@ public sealed class LiveSmokeTests(ITestOutputHelper output)
         output.WriteLine("\nclaude: " + Launcher.FindClaude() + "\nwt: " + Launcher.FindWindowsTerminal());
     }
 
+    /// <summary>Prints the Terminals tab for the real machine (read-only). Same SK_LIVE=1 switch.</summary>
+    [SkippableFact]
+    public void LiveTerminals()
+    {
+        Skip.IfNot(Environment.GetEnvironmentVariable("SK_LIVE") == "1", "Reads the real process list; set SK_LIVE=1 to run.");
+        var scanner = new TerminalScanner();
+        var sw = Stopwatch.StartNew();
+        var list = scanner.Scan();
+        var first = sw.ElapsedMilliseconds;
+        sw.Restart();
+        scanner.Scan();
+        output.WriteLine($"Terminal sessions: {list.Count} (first scan {first} ms, repeat {sw.ElapsedMilliseconds} ms)");
+        foreach (var t in list)
+        {
+            output.WriteLine($"  pid {t.RootPid,-6} {t.Label,-20} {t.Host,-18} {t.Folder}{(t.FolderIsStartFolder ? "  (start folder)" : "")}");
+            output.WriteLine($"      shell: {t.ShellName}  command: {TerminalCommands.Pretty(t.CommandLine)}");
+            output.WriteLine($"      saved: {TerminalCommands.ToSnapshot(t).CommandLine}");
+        }
+    }
+
     private static string Trim(string? s) => s == null ? "" : s.Length > 70 ? s[..70] + "…" : s;
 }

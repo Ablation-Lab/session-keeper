@@ -71,6 +71,9 @@ quotes, change them to single quotes first so the command line stays intact.
   or **New session…**), not through this skill.
 - **Snapshots** include matched sessions only. Unmatched or still-starting processes are skipped and
   listed as such; say so when it happens.
+- **Terminals:** snapshots saved in the app can also hold other terminal sessions (other CLI agents,
+  programs, shells). `--snapshots` shows how many each has (`terminals` in `--json`). This skill can't list,
+  save or reopen terminals; that's the app's Terminals tab.
 - The same session can show up under two PIDs if it's open in two terminals. Mention that, since two
   terminals writing to one conversation can conflict.
 
@@ -80,8 +83,9 @@ they're needed to tell sessions apart.
 
 ## Things this skill doesn't do
 
-- **Restore or reopen sessions.** That opens new windows (or tabs), so the user does it in the app (Snapshots
-  tab → Restore, or Recent tab → Reopen selected). Offer to `open` the app.
+- **Restore or reopen sessions or terminals.** That opens new windows (or tabs), and for terminals re-runs
+  commands after the user confirms them, so the user does it in the app (Snapshots tab → Restore, or Recent
+  tab → Reopen selected). Offer to `open` the app.
 - **Rename or delete snapshots.** Those are also done in the app.
 
 ## If SessionKeeper isn't installed (exit code 3)

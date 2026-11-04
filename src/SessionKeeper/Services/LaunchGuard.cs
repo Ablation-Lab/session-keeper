@@ -226,7 +226,7 @@ public static class LaunchGuard
                 var now = DateTimeOffset.Now;
                 var path = Path.Combine(dir, $"launches-{now:yyyy-MM-dd}.log");
                 bool newFile = !File.Exists(path);
-                File.AppendAllText(path, $"{now:yyyy-MM-dd HH:mm:ss.fff zzz}  {kind,-8} pid={Environment.ProcessId}  {message}\r\n",
+                File.AppendAllText(path, $"{now:yyyy-MM-dd HH:mm:ss.fff zzz}  {kind,-8} pid={Environment.ProcessId}  {Escape(message)}\r\n",
                     new UTF8Encoding(false));
                 if (newFile) PruneOldLogs(dir, now);
             }
@@ -235,6 +235,25 @@ public static class LaunchGuard
         {
             // Logging must never break the app.
         }
+    }
+
+    /// <summary>
+    /// One log entry is one line: line breaks, control and escape characters, and invisible or bidi marks in a
+    /// label, folder or command are written as \uXXXX, so nothing can forge a log line or hide text.
+    /// </summary>
+    internal static string Escape(string message)
+    {
+        StringBuilder? sb = null;
+        for (int i = 0; i < message.Length; i++)
+        {
+            var ch = message[i];
+            bool hide = char.IsControl(ch) || char.GetUnicodeCategory(ch) is System.Globalization.UnicodeCategory.Format
+                or System.Globalization.UnicodeCategory.LineSeparator or System.Globalization.UnicodeCategory.ParagraphSeparator;
+            if (!hide) { sb?.Append(ch); continue; }
+            sb ??= new StringBuilder(message, 0, i, message.Length + 16);
+            sb.Append("\\u").Append(((int)ch).ToString("X4"));
+        }
+        return sb?.ToString() ?? message;
     }
 
     private static void PruneOldLogs(string dir, DateTimeOffset now)
