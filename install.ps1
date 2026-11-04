@@ -81,14 +81,22 @@ Write-Host ''
 # ---------------------------------------------------------------- a running copy locks its files
 # That includes a copy started from this repository's own build output, which the build overwrites.
 $buildOutput = [System.IO.Path]::GetFullPath((Join-Path $repo 'src\SessionKeeper\bin')) + '\'
-function Get-BlockingCopies {
+# MCP connectors (SessionKeeper.exe --mcp, started by Claude Desktop or Claude Code) are handled separately below.
+function Get-ConnectorIds {
+    @(Get-CimInstance Win32_Process -Filter "Name='SessionKeeper.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -match '(^|\s)--mcp(\s|$)' } | ForEach-Object { [int]$_.ProcessId })
+}
+function Get-LockingProcesses([bool] $connectors) {
+    $mcp = Get-ConnectorIds
     Get-Process SessionKeeper -ErrorAction SilentlyContinue | Where-Object {
         try {
             $path = [System.IO.Path]::GetFullPath($_.Path)
-            ($path -ieq $exe) -or $path.StartsWith($buildOutput, [StringComparison]::OrdinalIgnoreCase)
+            (($mcp -contains $_.Id) -eq $connectors) -and (($path -ieq $exe) -or $path.StartsWith($buildOutput, [StringComparison]::OrdinalIgnoreCase))
         } catch { $false }
     }
 }
+function Get-BlockingCopies { Get-LockingProcesses $false }
+function Get-BlockingConnectors { Get-LockingProcesses $true }
 
 $running = @(Get-BlockingCopies)
 if ($running.Count -gt 0) {
@@ -118,10 +126,30 @@ if ($running.Count -gt 0) {
     Write-Host ''
 }
 
+# MCP connectors lock the exe too. They have their own stop signal (separate from the app's): while it's set, running
+# ones exit cleanly and new ones exit straight away. It's cleared once the new version is in place.
+$mcpStop = $null
+$connectors = @(Get-BlockingConnectors)
+if ($connectors.Count -gt 0) {
+    Write-Host "Pausing $($connectors.Count) SessionKeeper MCP connector(s) started by Claude Desktop or Claude Code, for the update."
+    $mcpStop = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, 'Local\SessionKeeper.McpStop')
+    [void]$mcpStop.Set()
+    $deadline = (Get-Date).AddSeconds(10)
+    while ((Get-Date) -lt $deadline -and @(Get-BlockingConnectors).Count -gt 0) { Start-Sleep -Milliseconds 300 }
+    if (@(Get-BlockingConnectors).Count -gt 0) {
+        [void]$mcpStop.Reset()
+        throw "The SessionKeeper MCP connector didn't stop (it may be an older version). Close Claude Desktop and Claude Code, then run install.cmd again."
+    }
+    Write-Host 'Paused. Afterwards, restart Claude Desktop (or run /mcp in Claude Code) to reconnect.'
+    Write-Host ''
+}
+
 # ---------------------------------------------------------------- build and install
 Write-Host "[1/3] Building and installing the app (this can take a minute) ..."
 & dotnet publish $project -c Release -o $Destination --nologo -v quiet
-if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed (exit $LASTEXITCODE). See the messages above." }
+$publishExit = $LASTEXITCODE
+if ($mcpStop) { [void]$mcpStop.Reset(); $mcpStop.Dispose(); $mcpStop = $null } # connectors may start again
+if ($publishExit -ne 0) { throw "dotnet publish failed (exit $publishExit). See the messages above." }
 if (-not (Test-Path -LiteralPath $exe)) { throw "Publish finished but $exe is missing." }
 # Marks this folder as an installed copy (the app's Settings tell people when they run a copy that isn't).
 $marker = [ordered]@{ installedAt = (Get-Date).ToString('o'); sourceRepo = $repo } | ConvertTo-Json
@@ -139,7 +167,7 @@ if ($NoSkill) {
     Write-Host '[3/3] Claude Code skill: skipped (-NoSkill).'
 } else {
     $claudeDir = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $env:USERPROFILE '.claude' }
-    $skillSrc = Join-Path $repo 'skills\session-keeper'
+    $skillSrc = Join-Path $repo 'plugin\skills\session-keeper'
     $skillDst = Join-Path $claudeDir 'skills\session-keeper'
     New-Item -ItemType Directory -Force -Path $skillDst | Out-Null
     foreach ($f in 'SKILL.md', 'sessionkeeper.ps1') {

@@ -33,10 +33,13 @@ public static class LaunchGuard
     public const string RemotionStudio = "Tools: Remotion Studio";
     public const string DevServer = "Tools: Dev server";
     public const string OpenInBrowser = "Tools: open running server in browser";
+    // The local MCP connector (SessionKeeper.exe --mcp): a tool call the MCP client asked the user to approve.
+    public const string McpOpenApp = "MCP: open app";
+    public const string McpOpenSession = "MCP: open session";
     private static readonly HashSet<string> AllowedActions = new()
     {
         Open, Reopen, Restore, OpenSnapshotsFolder, OpenRepoFolder, NewSession,
-        OpenProjectFolder, OpenInVSCode, OpenGitHub, RemotionStudio, DevServer, OpenInBrowser,
+        OpenProjectFolder, OpenInVSCode, OpenGitHub, RemotionStudio, DevServer, OpenInBrowser, McpOpenApp, McpOpenSession,
     };
 
     private static readonly AsyncLocal<string?> CurrentActionSlot = new();
@@ -117,7 +120,7 @@ public static class LaunchGuard
     internal static string? Check(ProcessStartInfo psi)
     {
         if (CurrentActionSlot.Value == null)
-            return "not inside an explicit user action (Open, Reopen, Restore, New session, a Tools item or an Open folder button)";
+            return "not inside an explicit user action (Open, Reopen, Restore, New session, a Tools item, an Open folder button or an approved MCP open tool)";
         if (psi.UseShellExecute)
             return "shell execution is not allowed";
         if (string.IsNullOrWhiteSpace(psi.FileName) || !Path.IsPathFullyQualified(psi.FileName))

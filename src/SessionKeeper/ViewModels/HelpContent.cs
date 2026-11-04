@@ -215,7 +215,7 @@ public static class HelpContent
                     "**Only on your click:** windows open only from Open, Reopen selected, Restore, New session, a Tools item and Open folder. Every launch is logged in %APPDATA%\\SessionKeeper\\logs.",
                     "**Read-only:** Claude Code's files and processes, and the terminals on the Terminals tab, are only ever read, never changed or closed.",
                     "**Your data:** snapshots, settings and session names live in %APPDATA%\\SessionKeeper.",
-                    "**More detail:** README.md in the SessionKeeper repository covers everything, including the command line and the Claude Code skill.",
+                    "**More detail:** README.md in the SessionKeeper repository covers everything, including the command line, the Claude Code skill and plugin, and the MCP connector for Claude Desktop.",
                 }),
             }),
     };

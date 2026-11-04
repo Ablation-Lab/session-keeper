@@ -11,11 +11,12 @@ namespace SessionKeeper.Services;
 
 public sealed class CliUsageException(string message) : Exception(message);
 
-public sealed record CliOptions(string Command, string? Note = null, string? Name = null, int Days = 1, bool Json = false);
+public sealed record CliOptions(string Command, string? Note = null, string? Name = null, int Days = 1, bool Json = false, bool NoMessages = false);
 
 /// <summary>
 /// Headless command-line mode. Read-only except --snapshot (writes one file to the snapshots folder) and
-/// --install-shortcut (creates the per-user Start menu shortcut). Never launches or touches sessions.
+/// --install-shortcut (creates the per-user Start menu shortcut). Never launches or touches sessions. --mcp runs
+/// the local MCP connector instead (see <see cref="McpServer"/>), which reuses these commands' output.
 ///
 /// Exit codes: 0 success, 1 nothing to do or an error, 2 usage error.
 /// </summary>
@@ -26,20 +27,24 @@ public static class Cli
 
         Usage:
           SessionKeeper.exe                         open the app (brings an open window to the front)
-          SessionKeeper.exe --list [--json]         list running Claude Code sessions
-          SessionKeeper.exe --recent [--days N] [--json]
+          SessionKeeper.exe --list [--json] [--no-messages]
+                                                    list running Claude Code sessions
+          SessionKeeper.exe --recent [--days N] [--json] [--no-messages]
                                                     list sessions active in the last N days (default 1)
           SessionKeeper.exe --snapshots [--json]    list saved snapshots
           SessionKeeper.exe --snapshot ["note"] [--name "name"] [--json]
                                                     save the running sessions as a snapshot
           SessionKeeper.exe --install-shortcut      add SessionKeeper to the Start menu (per user)
+          SessionKeeper.exe --mcp                   run the local MCP connector (stdio, for Claude Desktop/Code)
           SessionKeeper.exe --help | --version
+
+        --no-messages leaves out the first and last messages, showing only titles, folders, times and IDs.
 
         Exit codes: 0 ok, 1 nothing to do or error, 2 usage error.
         In PowerShell, pipe the output (e.g. "| Out-Host") so the shell waits for it.
         """;
 
-    private static readonly string[] Commands = { "--list", "--recent", "--snapshots", "--snapshot", "--install-shortcut", "--help", "--version" };
+    private static readonly string[] Commands = { "--list", "--recent", "--snapshots", "--snapshot", "--install-shortcut", "--help", "--version", "--mcp" };
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -57,7 +62,7 @@ public static class Cli
     {
         string? command = null, note = null, name = null;
         int days = 1;
-        bool json = false;
+        bool json = false, noMessages = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -77,6 +82,7 @@ public static class Cli
             switch (lower)
             {
                 case "--json": json = true; break;
+                case "--no-messages": noMessages = true; break;
                 case "--note": note = Value(args, ref i, a); break;
                 case "--name": name = Value(args, ref i, a); break;
                 case "--days":
@@ -91,7 +97,9 @@ public static class Cli
         if (command == null) throw new CliUsageException("No command given.");
         if ((note != null || name != null) && command != "--snapshot") throw new CliUsageException("--note and --name only apply to --snapshot.");
         if (name != null && string.IsNullOrWhiteSpace(name)) throw new CliUsageException("--name can't be empty.");
-        return new CliOptions(command, note, name?.Trim(), days, json);
+        if (noMessages && command is not ("--list" or "--recent")) throw new CliUsageException("--no-messages only applies to --list and --recent.");
+        if (command == "--mcp" && (json || days != 1)) throw new CliUsageException("--mcp takes no other options.");
+        return new CliOptions(command, note, name?.Trim(), days, json, noMessages);
     }
 
     private static string Value(string[] args, ref int i, string flag)
@@ -102,6 +110,8 @@ public static class Cli
 
     public static int Run(string[] args)
     {
+        // The MCP connector owns stdin/stdout (JSON-RPC only), so it's started before any other output is opened.
+        if (args.Length == 1 && string.Equals(args[0], "--mcp", StringComparison.OrdinalIgnoreCase)) return McpServer.RunStdio();
         using var output = CliOutput.Open(error: false);
         using var errors = CliOutput.Open(error: true);
         CliOptions opts;
@@ -128,6 +138,7 @@ public static class Cli
                 "--snapshots" => Snapshots(output, opts),
                 "--snapshot" => SaveSnapshot(output, errors, opts),
                 "--install-shortcut" => InstallShortcut(output),
+                "--mcp" => throw new CliUsageException("--mcp takes no other options."),
                 _ => throw new CliUsageException("Unknown command."),
             };
         }
@@ -146,7 +157,7 @@ public static class Cli
 
     // ------------------------------------------------------------------ commands
 
-    private static int List(TextWriter w, CliOptions o)
+    internal static int List(TextWriter w, CliOptions o)
     {
         var running = SessionQueries.GetRunning(new RunningScanner(), new SessionStore());
         var names = new NicknameStore();
@@ -161,7 +172,7 @@ public static class Cli
                 folder = e.ProjectDir,
                 folderMissing = e.FolderMissing,
                 title = e.Running.Name ?? e.Info?.Title,
-                lastMessage = e.Info?.LastPrompt,
+                lastMessage = o.NoMessages ? null : e.Info?.LastPrompt,
                 lastActive = e.LastActive,
             }), Json));
             return 0;
@@ -176,14 +187,14 @@ public static class Cli
             w.WriteLine($"  {StatusText(e.Running),-12} {Fmt.FolderName(e.ProjectDir)}  ·  {Fmt.Ago(e.LastActive)}{(e.FolderMissing ? "  ·  FOLDER MISSING" : "")}");
             if (names.Get(e.Running.SessionId) is { } nick) w.WriteLine($"  {"",-12} name: {Fmt.Trim(nick, 100)}");
             if ((e.Running.Name ?? e.Info?.Title) is { } title) w.WriteLine($"  {"",-12} {Fmt.Trim(title, 100)}");
-            if (e.Info?.LastPrompt is { } lp) w.WriteLine($"  {"",-12} last: {Fmt.Trim(lp, 100)}");
+            if (!o.NoMessages && e.Info?.LastPrompt is { } lp) w.WriteLine($"  {"",-12} last: {Fmt.Trim(lp, 100)}");
             w.WriteLine($"  {"",-12} {e.ProjectDir ?? "(folder unknown)"}  ·  " +
                         (e.Running.SessionId != null ? "session " + e.Running.SessionId : "no session id") + $"  ·  PID {e.Running.Pid}");
         }
         return 0;
     }
 
-    private static int Recent(TextWriter w, CliOptions o)
+    internal static int Recent(TextWriter w, CliOptions o)
     {
         var store = new SessionStore();
         var recent = store.GetRecent(DateTimeOffset.Now.AddDays(-o.Days));
@@ -198,8 +209,8 @@ public static class Cli
                 nickname = names.Get(s.SessionId),
                 folder = s.ProjectDir,
                 title = s.Title,
-                firstMessage = s.FirstPrompt,
-                lastMessage = s.LastPrompt,
+                firstMessage = o.NoMessages ? null : s.FirstPrompt,
+                lastMessage = o.NoMessages ? null : s.LastPrompt,
                 lastActive = s.LastActive,
                 running = running.Contains(s.SessionId),
             }), Json));
@@ -214,13 +225,13 @@ public static class Cli
             w.WriteLine($"  {Fmt.When(s.LastActive),-16} {Fmt.FolderName(s.ProjectDir)}{(running.Contains(s.SessionId) ? "  ·  running" : "")}");
             if (names.Get(s.SessionId) is { } nick) w.WriteLine($"  {"",-16} name: {Fmt.Trim(nick, 100)}");
             if (s.Title != null) w.WriteLine($"  {"",-16} {Fmt.Trim(s.Title, 100)}");
-            if ((s.LastPrompt ?? s.FirstPrompt) is { } lp) w.WriteLine($"  {"",-16} last: {Fmt.Trim(lp, 100)}");
+            if (!o.NoMessages && (s.LastPrompt ?? s.FirstPrompt) is { } lp) w.WriteLine($"  {"",-16} last: {Fmt.Trim(lp, 100)}");
             w.WriteLine($"  {"",-16} {s.ProjectDir}  ·  session {s.SessionId}");
         }
         return 0;
     }
 
-    private static int Snapshots(TextWriter w, CliOptions o)
+    internal static int Snapshots(TextWriter w, CliOptions o)
     {
         var files = new SnapshotStore().List();
         if (o.Json)
@@ -254,7 +265,7 @@ public static class Cli
         return 0;
     }
 
-    private static int SaveSnapshot(TextWriter w, TextWriter err, CliOptions o)
+    internal static int SaveSnapshot(TextWriter w, TextWriter err, CliOptions o)
     {
         var now = DateTimeOffset.Now;
         var running = SessionQueries.GetRunning(new RunningScanner(), new SessionStore());

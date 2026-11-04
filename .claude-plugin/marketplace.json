@@ -1,0 +1,13 @@
+{
+  "name": "session-keeper",
+  "owner": { "name": "Ablation Lab" },
+  "description": "The SessionKeeper plugin for Claude Code (Windows).",
+  "plugins": [
+    {
+      "name": "session-keeper",
+      "source": "./plugin",
+      "description": "List running and recent Claude Code sessions, list snapshots, save a snapshot with a note, and open SessionKeeper.",
+      "version": "1.10.0"
+    }
+  ]
+}

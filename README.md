@@ -20,6 +20,8 @@ A small Windows app (C# / .NET 8 WPF) that shows which Claude Code sessions are 
 | **Windows integration** | PowerShell windows or Windows Terminal tabs, Start with Windows (in the tray), a Start menu shortcut. | [Settings](#settings) |
 | **Version footer** | Shows the build, warns when your clone has newer app changes than your installed copy, and checks the .NET runtime. | [Reading the version footer](#reading-the-version-footer) |
 | **Command line and skill** | List running, recent and saved sessions or save a snapshot from a terminal, or just ask Claude Code. | [Command line](#command-line), [Claude Code skill](#claude-code-skill) |
+| **Claude Code plugin** | The skill plus `/session-keeper:` commands to list running and recent sessions, list snapshots, save a snapshot with a note, and open the app. | [Claude Code plugin](#claude-code-plugin) |
+| **MCP connector** | A local MCP server for Claude Desktop and Claude Code with the same actions as tools, plus resuming one session. Plain-text results, no network. | [MCP connector](#mcp-connector-claude-desktop-and-claude-code) |
 | **Safety** | Launches only when you click, every launch logged, no command injection, read-only towards Claude Code and towards the processes it inspects. | [Safety](#safety) |
 
 ## Install / Update
@@ -334,13 +336,16 @@ Each part has its own colour, so you can tell which one is out of date. Both che
 The same exe has command-line options. It never opens the window when you use them:
 
 ```text
-SessionKeeper.exe --list [--json]                         running sessions
-SessionKeeper.exe --recent [--days N] [--json]            sessions active in the last N days (default 1)
+SessionKeeper.exe --list [--json] [--no-messages]         running sessions
+SessionKeeper.exe --recent [--days N] [--json] [--no-messages]   sessions active in the last N days (default 1)
 SessionKeeper.exe --snapshots [--json]                    saved snapshots (with how many terminals each has)
 SessionKeeper.exe --snapshot ["note"] [--name "name"] [--json]   save the running sessions
 SessionKeeper.exe --install-shortcut                      add the Start menu shortcut
+SessionKeeper.exe --mcp                                   run the MCP connector (started by Claude Desktop or Claude Code)
 SessionKeeper.exe --help | --version
 ```
+
+- `--no-messages` leaves out each session's first and last messages, so the output has only titles, names, folders, times, statuses and session IDs. The skill, the plugin and the MCP connector always use it.
 
 - `--snapshot` uses the same rules as the Save dialog. Matched sessions are saved, and unmatched or still-starting processes are skipped and listed.
 - Exit codes: 0 means OK, 1 means nothing to do or an error, and 2 means a usage error.
@@ -349,7 +354,7 @@ SessionKeeper.exe --help | --version
 
 ### Claude Code skill
 
-`skills/session-keeper/` lets you ask Claude Code things like:
+`plugin/skills/session-keeper/` lets you ask Claude Code things like:
 - "open SessionKeeper"
 - "list my running sessions"
 - "what did I work on today?"
@@ -360,15 +365,118 @@ It runs the command-line options above through `sessionkeeper.ps1`, which finds 
 2. `%LOCALAPPDATA%\Programs\SessionKeeper\SessionKeeper.exe`.
 3. `PATH`.
 
-Restoring sessions stays in the app, because that opens new windows. The skill only pre-approves the read-only commands (`open`, `--list`, `--recent`, `--snapshots`, `--help`, `--version`), so Claude Code asks you before it saves a snapshot or adds the Start menu shortcut.
+It always lists sessions with `--no-messages`, so Claude sees titles, names, folders and times, not what was said. Restoring sessions stays in the app, because that opens new windows. The skill only pre-approves the read-only commands (`open`, `--list`, `--recent`, `--snapshots`, `--help`, `--version`), so Claude Code asks you before it saves a snapshot or adds the Start menu shortcut.
 
 `install.cmd` installs the skill for you. To install it by hand, copy the folder:
 
 ```powershell
-Copy-Item -Recurse -Force skills\session-keeper "$env:USERPROFILE\.claude\skills\"
+Copy-Item -Recurse -Force plugin\skills\session-keeper "$env:USERPROFILE\.claude\skills\"
 ```
 
-Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. Then start a new Claude Code session so it picks the skill up.
+Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. Then start a new Claude Code session so it picks the skill up. The [plugin](#claude-code-plugin) includes the same skill.
+
+### Claude Code plugin
+
+The `plugin` folder is a Claude Code plugin. It bundles the [skill](#claude-code-skill) and adds five commands, so Claude Code can see and save your sessions from any project. The repository is also a plugin marketplace that lists it.
+
+| Command | What it does |
+|---|---|
+| `/session-keeper:running` | Lists the Claude Code sessions running now, with their status. |
+| `/session-keeper:recent [days]` | Lists sessions from today, or from the last N days (1 to 365). |
+| `/session-keeper:snapshots` | Lists your saved snapshots. |
+| `/session-keeper:snapshot [note]` | Saves the running sessions as a snapshot, with an optional note. |
+| `/session-keeper:open` | Opens the SessionKeeper window. |
+
+**Install the plugin**
+1. Install SessionKeeper 1.10.0 or later with `install.cmd` (see [Install / Update](#install--update)). The plugin uses the app's `--no-messages` option, which earlier versions don't have.
+2. In Claude Code, add the marketplace. From your clone:
+   ```text
+   /plugin marketplace add C:\path\to\session-keeper
+   ```
+   or from GitHub:
+   ```text
+   /plugin marketplace add Ablation-Lab/session-keeper
+   ```
+3. Install the plugin:
+   ```text
+   /plugin install session-keeper@session-keeper
+   ```
+4. Start a new Claude Code session. Type `/session-keeper:` to see the commands.
+
+From a terminal, `claude plugin marketplace add <path or Ablation-Lab/session-keeper>` and `claude plugin install session-keeper@session-keeper` do the same. To update it later, pull the repository (or let the GitHub marketplace update), then run `/plugin marketplace update session-keeper`.
+
+The plugin includes the skill, so you don't need the copy `install.cmd` puts in `%USERPROFILE%\.claude\skills` as well. If you use the plugin, install the app with `install.cmd -NoSkill`, or delete that folder, so Claude Code doesn't see the skill twice.
+
+**Use the plugin**
+1. In any Claude Code session, type `/session-keeper:running`. Claude runs SessionKeeper and replies with one line per running session: folder, name or title, status, and when it was last active.
+2. Type `/session-keeper:recent 3` to see what you worked on in the last three days.
+3. At the end of the day, type `/session-keeper:snapshot waiting on review` to save your running sessions with that note.
+4. Later, type `/session-keeper:open` and restore the snapshot from the **Snapshots** tab.
+
+You can also just ask, as with the skill: "which sessions are waiting for me?" or "save my sessions with the note end of day".
+
+**What it can do**
+- The commands run only the bundled `sessionkeeper.ps1`, with fixed options. Each command pre-approves exactly its own command line, so Claude Code doesn't ask you for the read-only ones.
+- `/session-keeper:snapshot` and `/session-keeper:open` run only when you type them. Claude can't run them on its own.
+- A snapshot note is passed as one single-quoted argument. The command tells Claude to change any apostrophes in it to ʼ (which no shell treats as a quote), straight double quotes to ”, and line breaks to spaces first, so a note can't end the quotes and add options or commands, in Bash or PowerShell.
+- Results show titles, names, folders, times, statuses and session IDs, never what was said in a conversation. The listing commands use `--no-messages`.
+
+### MCP connector (Claude Desktop and Claude Code)
+
+`SessionKeeper.exe --mcp` is a small local [MCP](https://modelcontextprotocol.io) server. Claude Desktop or Claude Code starts it in the background and talks to it through its standard input and output. It opens no network port and connects to nothing.
+
+| Tool | What it does | Changes anything? |
+|---|---|---|
+| `list_running_sessions` | The Claude Code sessions running now: status, folder, last active, name or title, session ID. | No |
+| `list_recent_sessions` | Sessions from the last N days (1 to 365, default 1), newest first, and whether each is running. | No |
+| `list_snapshots` | Saved snapshots: name, date, how many sessions and terminals, note. | No |
+| `save_snapshot` | Saves the running sessions as a snapshot, with an optional name and note. | Writes one snapshot file |
+| `open_app` | Opens the SessionKeeper window (an open one comes to the front). | Opens a window |
+| `open_session` | Resumes one session, by its session ID, in a new PowerShell window or Windows Terminal tab. | Opens a window |
+
+Results are plain text with titles, names, folders, times, statuses and session IDs, never what was said in a conversation.
+
+**Install it in Claude Desktop**
+1. Install SessionKeeper 1.10.0 or later with `install.cmd`.
+2. In Claude Desktop, open **Settings** > **Developer** > **Edit Config**. This opens `%APPDATA%\Claude\claude_desktop_config.json` (create it if it doesn't exist).
+3. Add SessionKeeper under `mcpServers`, with your user name in the path. If the file already has other servers, add this entry next to them:
+   ```json
+   {
+     "mcpServers": {
+       "sessionkeeper": {
+         "command": "C:\\Users\\YOUR-NAME\\AppData\\Local\\Programs\\SessionKeeper\\SessionKeeper.exe",
+         "args": ["--mcp"]
+       }
+     }
+   }
+   ```
+4. Save the file and restart Claude Desktop. **sessionkeeper** then appears in the connectors (tools) menu of a new chat.
+
+**Install it in Claude Code**
+1. Install SessionKeeper 1.10.0 or later with `install.cmd`.
+2. In PowerShell, add it for all your projects:
+   ```powershell
+   claude mcp add --scope user sessionkeeper -- "$env:LOCALAPPDATA\Programs\SessionKeeper\SessionKeeper.exe" --mcp
+   ```
+3. Start a new Claude Code session and run `/mcp` to check that **sessionkeeper** is connected.
+
+To remove it: delete the entry from `claude_desktop_config.json`, or run `claude mcp remove --scope user sessionkeeper`.
+
+**Updating:** `install.cmd` pauses any running connectors while it replaces the app (they lock `SessionKeeper.exe`), using a stop signal of their own. Afterwards, restart Claude Desktop, or run `/mcp` in Claude Code, to reconnect.
+
+**Use the connector**
+1. In a new chat, ask "Which Claude Code sessions are running?" Claude calls `list_running_sessions` and summarises the result.
+2. Ask "What did I work on in the last 3 days?" for `list_recent_sessions`.
+3. Ask "Save my sessions as a snapshot with the note waiting on review". Claude asks your permission to use `save_snapshot`, then confirms what was saved.
+4. Ask "Open the session about the release notes". Claude finds its session ID with `list_recent_sessions`, asks your permission for `open_session`, and the session opens in a new window in its own folder.
+5. Ask "Open SessionKeeper" for `open_app`, then restore a whole snapshot from the **Snapshots** tab.
+
+**What it can do**
+- The three list tools are marked read-only. Claude Desktop and Claude Code ask you before using `save_snapshot`, `open_app` or `open_session`, unless you've chosen to always allow them.
+- `open_session` takes only a session ID, which must be a GUID. The folder comes from Claude Code's own record of that conversation, never from the request, and it's checked the same way **Open** checks it: the conversation must belong to that folder, and the folder must still exist. A session that's already running isn't opened a second time.
+- `open_session` and `open_app` go through the same gatekeeper and launch code as the app's **Open** button, and are logged in the [launch log](#safety) as `MCP: open session` or `MCP: open app`.
+- Notes and names are cleaned of control and invisible characters and capped (1,000 and 80 characters). Arguments the tools don't define are refused.
+- Restoring a whole snapshot, and anything to do with other terminals, stays in the app.
 
 ### Version and update checks
 
@@ -395,6 +503,7 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
 | Snapshots | Readable JSON in `%APPDATA%\SessionKeeper\snapshots\`, with an optional note for the whole snapshot and per-session notes. |
 | Terminal sessions | One process-list snapshot (PID, parent, exe name), one pass over the desktop's console windows (class and owner only), then query-only handles on each terminal's own processes for the command line, start time and folder. Parent links are checked against start times, so a reused process ID can't attach a program to the wrong terminal. A scan takes a few milliseconds. |
 | Tools menu | Which items apply comes from small local reads: `package.json` and the repository's `.git\config` (no git process). **Open folder**, **GitHub** and a running server's address go through `explorer.exe`, and **VS Code** starts `Code.exe`, each by full path with the folder or address as the only argument. **Remotion Studio** and **Dev server** use the same window or tab as Claude sessions: the script enters the project folder (or stops), then runs `npm.cmd run dev` or `npx.cmd remotion studio` by full path. "Already running" comes from the process list, command lines, start times, working folders and Windows' TCP listener table (`GetExtendedTcpTable`); nothing connects to the server. |
+| MCP connector | `SessionKeeper.exe --mcp` reads JSON-RPC messages, one per line, from its standard input and writes the replies to its standard output. The list tools reuse the command line's own output with `--no-messages`. `open_session` and `open_app` use the same launch code as **Open**. Its standard input and output handles aren't passed on to the windows it opens. |
 | Uncommitted changes badge | A hidden, read-only `git status --porcelain=v2 --branch -z` per repository, off the UI thread, at most two at a time, cached for a minute. |
 | Reopening terminals | The same window or tab as Claude sessions. The script enters the folder, then starts the saved program through .NET's process API with the saved arguments as one string, so neither PowerShell nor SessionKeeper parses them. |
 
@@ -403,7 +512,7 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
 ### Safety
 
 - **Launches only on request.**
-  - Every process SessionKeeper starts goes through one gatekeeper (`LaunchGuard`), which refuses anything outside an explicit click on **Open**, **Reopen selected**, **Restore**, **New session** (its **Start** button), an item in a row's **Tools** menu (or **Yes** to open a running server's address) or **Open folder**.
+  - Every process SessionKeeper starts goes through one gatekeeper (`LaunchGuard`), which refuses anything outside an explicit click on **Open**, **Reopen selected**, **Restore**, **New session** (its **Start** button), an item in a row's **Tools** menu (or **Yes** to open a running server's address), **Open folder**, or an MCP `open_app` or `open_session` call that Claude Desktop or Claude Code asked you to approve.
   - The gatekeeper stops SessionKeeper's own code from launching things by accident (for example from a timer). It isn't a security boundary: it doesn't protect against other software running as you.
   - Background work has no such permission, so it can never launch anything. That covers auto-refresh, session detection, the tray and the command line.
   - Shell execution (URIs such as `ms-settings:`, documents, verbs) is refused, and so is `wt.exe` without a `new-tab` command. A test fails if any other code calls `Process.Start`.
@@ -415,6 +524,7 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
   - Every log line is one line: line breaks, control characters and invisible characters in a label, folder or command are written as `\uXXXX`, so nothing can forge or hide a log entry.
   - Also logged: `DEBUG` lines when a registry entry is rejected because its process start time doesn't match (once per process, to make a future registry format change visible), and `ENV` lines naming (never showing the values of) unrecognised `CLAUDE*` variables passed on to a launched session.
 - **Read-only detection.** The Terminals tab only reads: a process list, window classes and owners, command lines, start times and folders through query-only handles, and the headers of exe files on disk (to tell windowed programs from console ones). It never kills, signals, modifies or injects into any process.
+- **The plugin and MCP connector.** They're read-only except for saving a snapshot and opening the app or a session, and they never show conversation text, only titles, names, folders, times, statuses and session IDs. The connector runs only while Claude Desktop or Claude Code has it open, talks to them over standard input and output, and opens no network port. See [Claude Code plugin](#claude-code-plugin) and [MCP connector](#mcp-connector-claude-desktop-and-claude-code).
 - **Read-only towards Claude Code.** Session files and registry entries are opened read-only with full sharing. Processes are opened with query/read rights only. The app never writes to, deletes from or kills anything in Claude Code's files or processes. The one exception is the installer (not the app), which adds the skill folder described under [Install](#install--update).
 - **No command injection.**
   - Folder names, session names, titles and notes are never parsed as commands.
