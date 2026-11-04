@@ -50,31 +50,27 @@ public sealed class RemotionStudioTests : IDisposable
     }
 
     [Fact]
-    public void FindProjectsListsOnlyRemotionFoldersByName()
+    public void PackageJsonIsReadForRemotionAndTheDevScript()
     {
-        Project("beta", """{"devDependencies":{"@remotion/cli":"4.0.0"}}""");
-        Project("alpha", """{"scripts":{"dev":"remotion studio"},"dependencies":{"remotion":"4.0.0"}}""", installed: true);
-        Project("plain", """{"dependencies":{"react":"18"}}""");
-        Project("broken", "{ not json");
-        Project(".hidden", """{"dependencies":{"remotion":"4.0.0"}}""");
+        var studio = RemotionStudio.ReadPackage(Project("alpha", """{"scripts":{"dev":"remotion studio"},"dependencies":{"remotion":"4.0.0"}}""", installed: true))!;
+        Assert.True(studio.UsesRemotion);
+        Assert.True(studio.RemotionInstalled);
+        Assert.True(studio.DevRunsStudio);
+
+        var player = RemotionStudio.ReadPackage(Project("beta", """{"scripts":{"dev":"next dev"},"devDependencies":{"@remotion/player":"4.0.0"}}"""))!;
+        Assert.True(player.UsesRemotion);
+        Assert.False(player.RemotionInstalled);
+        Assert.False(player.DevRunsStudio);
+
+        var vite = RemotionStudio.ReadPackage(Project("plain", """{"scripts":{"dev":"vite"},"dependencies":{"react":"18"}}"""))!;
+        Assert.False(vite.UsesRemotion);
+        Assert.Equal("vite", vite.DevScript);
+        Assert.Null(RemotionStudio.ReadProject(Path.Combine(_root, "plain")));
+
+        Assert.Null(RemotionStudio.ReadPackage(Project("broken", "{ not json")));
+        Assert.Null(RemotionStudio.ReadPackage(Project("array", "[1,2]")));
         Directory.CreateDirectory(Path.Combine(_root, "empty"));
-
-        var found = RemotionStudio.FindProjects(_root);
-        Assert.Equal(new[] { "alpha", "beta" }, found.Select(p => p.Name));
-        Assert.Equal("remotion studio", found[0].DevScript);
-        Assert.True(found[0].Installed);
-        Assert.Null(found[1].DevScript);
-        Assert.False(found[1].Installed);
-        Assert.True(found[0].DevRunsStudio);
-        Assert.False(found[1].DevRunsStudio);
-        Assert.Equal(Path.Combine(_root, "alpha"), found[0].Dir);
-    }
-
-    [Fact]
-    public void AMissingOrRelativeProjectsFolderFindsNothing()
-    {
-        Assert.Empty(RemotionStudio.FindProjects(Path.Combine(_root, "nope")));
-        Assert.Empty(RemotionStudio.FindProjects("relative"));
+        Assert.Null(RemotionStudio.ReadPackage(Path.Combine(_root, "empty")));
     }
 
     [Fact]
@@ -138,7 +134,7 @@ public sealed class RemotionStudioTests : IDisposable
     {
         var dir = @"C:\Projects\" + name;
         Assert.Contains("command character", RemotionStudio.CheckFolder(dir));
-        Assert.Throws<ArgumentException>(() => Launcher.BuildStudioScript(new LaunchItem(dir, null, "demo", Studio: NpmDev())));
+        Assert.Throws<ArgumentException>(() => Launcher.BuildNpmScript(new LaunchItem(dir, null, "demo", Npm: NpmDev())));
     }
 
     [Theory]
@@ -156,19 +152,16 @@ public sealed class RemotionStudioTests : IDisposable
         var dir = Project("demo", """{"scripts":{"dev":"remotion studio"},"dependencies":{"remotion":"4"}}""");
         File.WriteAllText(Path.Combine(dir, ".npmrc"), npmrc);
         Assert.Equal(refused, RemotionStudio.CheckFolder(dir) != null);
-        Assert.Equal(refused, Launcher.Validate(new LaunchItem(dir, null, "demo", Studio: NpmDev())) != null);
+        Assert.Equal(refused, Launcher.Validate(new LaunchItem(dir, null, "demo", Npm: NpmDev())) != null);
     }
 
     [Fact]
-    public void FolderNamesEndingInADotAreSkipped()
+    public void FolderNamesEndingInADotOrSpaceAreRefused()
     {
-        Project("demo", """{"dependencies":{"remotion":"4"}}""");
-        // Windows APIs trim a trailing dot, so "demo." would read demo's package.json and share its status.
-        var trailing = @"\\?\" + Path.Combine(_root, "demo.");
-        Directory.CreateDirectory(trailing);
-        File.WriteAllText(trailing + @"\package.json", """{"dependencies":{"remotion":"4"}}""");
-        Assert.Equal(new[] { "demo" }, RemotionStudio.FindProjects(_root).Select(p => p.Name));
+        // Windows APIs trim them, so "demo." would read demo's package.json.
         Assert.NotNull(RemotionStudio.CheckFolder(Path.Combine(_root, "demo.")));
+        Assert.NotNull(RemotionStudio.CheckFolder(Path.Combine(_root, "demo ")));
+        Assert.Null(RemotionStudio.CheckFolder(Path.Combine(_root, "demo.v2")));
     }
 
     [Fact]
@@ -177,19 +170,19 @@ public sealed class RemotionStudioTests : IDisposable
         var dir = Path.Combine(_root, "demo");
         var npm = Tool("npm.cmd");
         var npx = Tool("npx.cmd");
-        Assert.Null(RemotionStudio.Check(new StudioCommand(npm, new[] { "run", "dev" }), dir));
-        Assert.Null(RemotionStudio.Check(new StudioCommand(npx, new[] { "remotion", "studio" }), dir));
+        Assert.Null(RemotionStudio.Check(new NpmCommand(npm, new[] { "run", "dev" }), dir));
+        Assert.Null(RemotionStudio.Check(new NpmCommand(npx, new[] { "remotion", "studio" }), dir));
 
-        Assert.NotNull(RemotionStudio.Check(new StudioCommand(npm, new[] { "run", "build" }), dir));
-        Assert.NotNull(RemotionStudio.Check(new StudioCommand(npm, new[] { "remotion", "studio" }), dir));
-        Assert.NotNull(RemotionStudio.Check(new StudioCommand(npx, new[] { "run", "dev" }), dir));
-        Assert.NotNull(RemotionStudio.Check(new StudioCommand(npm, new[] { "run", "dev", "--", "x" }), dir));
-        Assert.NotNull(RemotionStudio.Check(new StudioCommand(Tool("npm.exe"), new[] { "run", "dev" }), dir));
-        Assert.NotNull(RemotionStudio.Check(new StudioCommand("npm.cmd", new[] { "run", "dev" }), dir));
-        Assert.NotNull(RemotionStudio.Check(new StudioCommand(@"\\server\share\npm.cmd", new[] { "run", "dev" }), dir));
-        Assert.NotNull(RemotionStudio.Check(new StudioCommand(@"C:\Tools\..\x\npm.cmd", new[] { "run", "dev" }), dir));
-        Assert.NotNull(RemotionStudio.Check(new StudioCommand(@"C:\%TEMP%\npm.cmd", new[] { "run", "dev" }), dir));
-        Assert.NotNull(RemotionStudio.Check(new StudioCommand("C:\\Tools\u202E\\npm.cmd", new[] { "run", "dev" }), dir));
+        Assert.NotNull(RemotionStudio.Check(new NpmCommand(npm, new[] { "run", "build" }), dir));
+        Assert.NotNull(RemotionStudio.Check(new NpmCommand(npm, new[] { "remotion", "studio" }), dir));
+        Assert.NotNull(RemotionStudio.Check(new NpmCommand(npx, new[] { "run", "dev" }), dir));
+        Assert.NotNull(RemotionStudio.Check(new NpmCommand(npm, new[] { "run", "dev", "--", "x" }), dir));
+        Assert.NotNull(RemotionStudio.Check(new NpmCommand(Tool("npm.exe"), new[] { "run", "dev" }), dir));
+        Assert.NotNull(RemotionStudio.Check(new NpmCommand("npm.cmd", new[] { "run", "dev" }), dir));
+        Assert.NotNull(RemotionStudio.Check(new NpmCommand(@"\\server\share\npm.cmd", new[] { "run", "dev" }), dir));
+        Assert.NotNull(RemotionStudio.Check(new NpmCommand(@"C:\Tools\..\x\npm.cmd", new[] { "run", "dev" }), dir));
+        Assert.NotNull(RemotionStudio.Check(new NpmCommand(@"C:\%TEMP%\npm.cmd", new[] { "run", "dev" }), dir));
+        Assert.NotNull(RemotionStudio.Check(new NpmCommand("C:\\Tools\u202E\\npm.cmd", new[] { "run", "dev" }), dir));
     }
 
     [Fact]
@@ -198,10 +191,10 @@ public sealed class RemotionStudioTests : IDisposable
         var dir = Project("demo", """{"scripts":{"dev":"x"},"dependencies":{"remotion":"4"}}""");
         var planted = Path.Combine(dir, "npm.cmd");
         File.WriteAllText(planted, "");
-        var why = RemotionStudio.Check(new StudioCommand(planted, new[] { "run", "dev" }), dir);
+        var why = RemotionStudio.Check(new NpmCommand(planted, new[] { "run", "dev" }), dir);
         Assert.Contains("inside the project", why);
         // A similarly named sibling folder isn't "inside".
-        Assert.Null(RemotionStudio.Check(new StudioCommand(Path.Combine(_root, "demo-2", "npm.cmd"), new[] { "run", "dev" }), dir));
+        Assert.Null(RemotionStudio.Check(new NpmCommand(Path.Combine(_root, "demo-2", "npm.cmd"), new[] { "run", "dev" }), dir));
     }
 
     // ------------------------------------------------------------------ already running?
@@ -247,20 +240,24 @@ public sealed class RemotionStudioTests : IDisposable
         public readonly Dictionary<int, string> CommandLines = new();
         public readonly Dictionary<int, string> Folders = new();
         public readonly List<Native.Listener> Listeners = new();
+        public readonly Dictionary<int, long> Created = new();
         public int CommandLineReads;
 
-        public void Add(int pid, int parent, string exe, string cmd, string? cwd)
+        /// <summary>Start times default to the PID, so a parent with a lower PID started first.</summary>
+        public void Add(int pid, int parent, string exe, string cmd, string? cwd, long? created = null)
         {
             Processes.Add(new Native.ProcEntry(pid, parent, exe));
             CommandLines[pid] = cmd;
             if (cwd != null) Folders[pid] = cwd;
+            Created[pid] = created ?? pid;
         }
 
         public RemotionStudio.Source Source => new(
             () => Processes,
             pid => { CommandLineReads++; return CommandLines.GetValueOrDefault(pid); },
             pid => Folders.GetValueOrDefault(pid),
-            () => Listeners);
+            () => Listeners,
+            pid => Created.TryGetValue(pid, out var c) ? c : null);
     }
 
     private static string Cli(string project) => $"\"node\" \"{project}\\node_modules\\.bin\\\\..\\@remotion\\cli\\remotion-cli.js\" studio";
@@ -318,28 +315,133 @@ public sealed class RemotionStudioTests : IDisposable
     }
 
     [Fact]
-    public void CheckingSeveralProjectsReadsEachProcessOnce()
+    public void AChildThatStartedBeforeItsParentIsntCounted()
+    {
+        // A stale parent PID (the real parent exited and the PID was reused) mustn't attach another process's port.
+        var sys = new FakeSystem();
+        sys.Add(12, 1, "node.exe", Cli(Demo), Demo, created: 500);
+        sys.Add(13, 12, "node.exe", "node unrelated.js", @"C:\Projects\other", created: 100);
+        sys.Listeners.Add(new Native.Listener(13, 8080));
+        Assert.Null(RemotionStudio.FindRunning(Demo, sys.Source)!.Port);
+    }
+
+    private const string NpmRunDev = "\"C:\\Program Files\\nodejs\\node.exe\" \"C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js\" run dev";
+
+    [Theory]
+    [InlineData(NpmRunDev, true)]
+    [InlineData(@"node C:\nodejs\node_modules\npm\bin\npm-cli.js run-script dev", true)]
+    [InlineData("node npm-cli.js --silent run dev -- --port 4000", true)]
+    [InlineData("node npm-cli.js run build", false)]
+    [InlineData("node npm-cli.js run dev:server", false)]
+    [InlineData("node npm-cli.js install", false)]
+    [InlineData("node vite.js dev", false)]
+    public void NpmRunDevIsRecognised(string commandLine, bool isDev) => Assert.Equal(isDev, RemotionStudio.IsNpmRunDev(commandLine));
+
+    [Fact]
+    public void ARunningDevServerIsFoundThroughItsNpmProcessTree()
     {
         var sys = new FakeSystem();
-        sys.Add(12, 1, "node.exe", Cli(Demo), Demo);
-        sys.Add(20, 1, "node.exe", "node other.js", @"C:\Projects\x");
-        sys.Listeners.Add(new Native.Listener(12, 3000));
-        var all = RemotionStudio.FindRunning(new[] { Demo, @"C:\Projects\demo-2", @"C:\Projects\demo-3" }, sys.Source);
-        Assert.Equal(3000, all[Demo]!.Port);
-        Assert.Null(all[@"C:\Projects\demo-2"]);
-        Assert.Equal(2, sys.CommandLineReads);
+        // npm run dev in demo: npm (node) -> cmd /c vite -> node vite.js, which listens on 5173 (and a high port).
+        sys.Add(10, 1, "node.exe", NpmRunDev, Demo);
+        sys.Add(11, 10, "cmd.exe", @"C:\WINDOWS\system32\cmd.exe /d /s /c vite", Demo);
+        sys.Add(12, 11, "node.exe", @"node C:\Projects\demo\node_modules\vite\bin\vite.js", Demo);
+        // The same in demo-2, on the next port.
+        sys.Add(20, 1, "node.exe", NpmRunDev, @"C:\Projects\demo-2");
+        sys.Add(21, 20, "node.exe", "node vite.js", @"C:\Projects\demo-2");
+        sys.Listeners.AddRange(new Native.Listener[] { new(12, 51000), new(12, 5173), new(21, 5174) });
+
+        var demo = RemotionStudio.FindDevServer(Demo, sys.Source);
+        Assert.Equal(new[] { 10 }, demo!.Pids);
+        Assert.Equal(5173, demo.Port);
+        Assert.Equal(5174, RemotionStudio.FindDevServer(@"C:\Projects\demo-2", sys.Source)!.Port);
+        Assert.Null(RemotionStudio.FindDevServer(@"C:\Projects\demo-3", sys.Source));
+        Assert.Null(RemotionStudio.FindDevServer(@"C:\Projects", sys.Source)); // a parent folder isn't the project
+    }
+
+    [Fact]
+    public void AWorkspaceRootRunningSeveralProjectsOffersOnlyThisProjectsPort()
+    {
+        // npm run dev --workspaces at the monorepo root: web on 5173, api on 3000.
+        var sys = new FakeSystem();
+        sys.Add(10, 1, "node.exe", NpmRunDev + " --workspaces", @"C:\Projects\mono");
+        sys.Add(11, 10, "cmd.exe", "cmd.exe /d /s /c vite", @"C:\Projects\mono\apps\web");
+        sys.Add(12, 11, "node.exe", "node vite.js", @"C:\Projects\mono\apps\web");
+        sys.Add(13, 10, "cmd.exe", "cmd.exe /d /s /c node server.js", @"C:\Projects\mono\apps\api");
+        sys.Add(14, 13, "node.exe", "node server.js", @"C:\Projects\mono\apps\api");
+        sys.Listeners.AddRange(new Native.Listener[] { new(12, 5173), new(14, 3000) });
+        Assert.Equal(5173, RemotionStudio.FindDevServer(@"C:\Projects\mono\apps\web", sys.Source)!.Port);
+        Assert.Equal(3000, RemotionStudio.FindDevServer(@"C:\Projects\mono\apps\api", sys.Source)!.Port);
+        Assert.Equal(3000, RemotionStudio.FindDevServer(@"C:\Projects\mono", sys.Source)!.Port); // the root itself runs them all
+    }
+
+    [Fact]
+    public void AStudioInASubProjectDoesntBelongToTheMonorepoRoot()
+    {
+        var root = Project("mono", """{"dependencies":{"remotion":"4"}}""");
+        var video = Path.Combine(root, "apps", "video");
+        Directory.CreateDirectory(video);
+        var cli = Path.Combine(root, "node_modules", "@remotion", "cli", "remotion-cli.js");
+        Assert.True(RemotionStudio.BelongsTo(root, cli, video)); // just a subfolder: still the root's Studio
+        File.WriteAllText(Path.Combine(video, "package.json"), "{}");
+        Assert.False(RemotionStudio.BelongsTo(root, cli, video)); // a project of its own
+        Assert.True(RemotionStudio.BelongsTo(video, "remotion", video));
+    }
+
+    [Fact]
+    public void NpmStartedInASubfolderCountsWhenTheScriptRunsInTheProject()
+    {
+        var sys = new FakeSystem();
+        sys.Add(10, 1, "node.exe", NpmRunDev, @"C:\Projects\demo\src");
+        sys.Add(11, 10, "cmd.exe", "cmd.exe /d /s /c vite", Demo); // npm runs the script in the package folder
+        Assert.NotNull(RemotionStudio.FindDevServer(Demo, sys.Source));
+    }
+
+    [Fact]
+    public void OtherNpmScriptsAndOtherFoldersArentADevServer()
+    {
+        var sys = new FakeSystem();
+        sys.Add(10, 1, "node.exe", "node npm-cli.js run voiceover", Demo);
+        sys.Add(20, 1, "node.exe", NpmRunDev, @"C:\Projects\demo-2");
+        sys.Add(21, 20, "node.exe", "node vite.js", @"C:\Projects\demo-2");
+        sys.Listeners.Add(new Native.Listener(21, 5173));
+        Assert.Null(RemotionStudio.FindDevServer(Demo, sys.Source));
+    }
+
+    [Fact]
+    public void DevServerTreeIgnoresProcessesThatPredateTheirParent()
+    {
+        var sys = new FakeSystem();
+        sys.Add(10, 1, "node.exe", NpmRunDev, Demo, created: 500);
+        sys.Add(30, 10, "node.exe", "node old-server.js", @"C:\elsewhere", created: 100); // reused parent PID
+        sys.Listeners.Add(new Native.Listener(30, 9000));
+        Assert.Null(RemotionStudio.FindDevServer(Demo, sys.Source)!.Port);
+    }
+
+    [Fact]
+    public void TheDevServerCommandIsNpmRunDevOnly()
+    {
+        var npm = Tool("npm.cmd");
+        var cmd = RemotionStudio.DevServerCommand(Path.Combine(_root, "demo"), n => n == "npm.cmd" ? npm : null, out var problem);
+        Assert.Null(problem);
+        Assert.Equal(new[] { "run", "dev" }, cmd!.Args);
+        Assert.Equal(RemotionStudio.DevServerName, cmd.What);
+        // npx is only for Remotion Studio, and only the two known launches exist.
+        Assert.NotNull(RemotionStudio.Check(new NpmCommand(Tool("npx.cmd"), new[] { "remotion", "studio" }, RemotionStudio.DevServerName), _root));
+        Assert.NotNull(RemotionStudio.Check(new NpmCommand(npm, new[] { "run", "dev" }, "something else"), _root));
+        var script = Launcher.BuildNpmScript(new LaunchItem(Path.Combine(_root, "demo"), null, "demo", "Dev server: demo", Npm: cmd));
+        Assert.Contains("SessionKeeper: dev server for demo", script);
     }
 
     // ------------------------------------------------------------------ launching
 
-    private StudioCommand NpmDev() => new(Tool("npm.cmd"), new[] { "run", "dev" });
+    private NpmCommand NpmDev() => new(Tool("npm.cmd"), new[] { "run", "dev" });
 
     [Fact]
     public void TheScriptEntersTheFolderBeforeRunningAndQuotesEverything()
     {
         var dir = @"C:\Projects\it's a $(test) demo";
         var cmd = NpmDev();
-        var script = Launcher.BuildStudioScript(new LaunchItem(dir, null, "demo", "Remotion Studio: demo", Studio: cmd));
+        var script = Launcher.BuildNpmScript(new LaunchItem(dir, null, "demo", "Remotion Npm: demo", Npm: cmd));
         var enter = script.IndexOf("Set-Location -LiteralPath 'C:\\Projects\\it''s a $(test) demo'; ", StringComparison.Ordinal);
         var run = script.IndexOf("& " + Launcher.PsQuote(cmd.Exe) + " 'run' 'dev'", StringComparison.Ordinal);
         Assert.True(enter > 0, script);
@@ -352,8 +454,8 @@ public sealed class RemotionStudioTests : IDisposable
     [Fact]
     public void TheScriptRefusesAnythingButTheFixedCommands()
     {
-        var bad = new StudioCommand(Tool("npm.cmd"), new[] { "run", "build" });
-        Assert.Throws<ArgumentException>(() => Launcher.BuildStudioScript(new LaunchItem(_root, null, "demo", Studio: bad)));
+        var bad = new NpmCommand(Tool("npm.cmd"), new[] { "run", "build" });
+        Assert.Throws<ArgumentException>(() => Launcher.BuildNpmScript(new LaunchItem(_root, null, "demo", Npm: bad)));
     }
 
     [Fact]
@@ -361,26 +463,26 @@ public sealed class RemotionStudioTests : IDisposable
     {
         var dir = Project("demo", """{"scripts":{"dev":"x"},"dependencies":{"remotion":"4"}}""");
         var cmd = NpmDev();
-        Assert.Null(Launcher.Validate(new LaunchItem(dir, null, "demo", Studio: cmd)));
+        Assert.Null(Launcher.Validate(new LaunchItem(dir, null, "demo", Npm: cmd)));
 
         var bare = Path.Combine(_root, "bare");
         Directory.CreateDirectory(bare);
-        Assert.Contains("package.json", Launcher.Validate(new LaunchItem(bare, null, "bare", Studio: cmd)));
-        Assert.Contains("missing", Launcher.Validate(new LaunchItem(Path.Combine(_root, "gone"), null, "gone", Studio: cmd)));
-        Assert.Contains("UNC", Launcher.ValidateStudio(cmd, @"\\server\share\demo", null));
-        Assert.NotNull(Launcher.Validate(new LaunchItem(dir, "11111111-2222-3333-4444-555555555555", "demo", Studio: cmd)));
+        Assert.Contains("package.json", Launcher.Validate(new LaunchItem(bare, null, "bare", Npm: cmd)));
+        Assert.Contains("missing", Launcher.Validate(new LaunchItem(Path.Combine(_root, "gone"), null, "gone", Npm: cmd)));
+        Assert.Contains("UNC", Launcher.ValidateNpm(cmd, @"\\server\share\demo", null));
+        Assert.NotNull(Launcher.Validate(new LaunchItem(dir, "11111111-2222-3333-4444-555555555555", "demo", Npm: cmd)));
         Assert.NotNull(Launcher.Validate(new LaunchItem(dir, null, "demo", null, new TerminalCommand(null, "", "PowerShell", true), cmd)));
-        Assert.NotNull(Launcher.Validate(new LaunchItem(dir, null, "demo", Studio: new StudioCommand(Path.Combine(_root, "tools", "gone", "npm.cmd"), new[] { "run", "dev" }))));
+        Assert.NotNull(Launcher.Validate(new LaunchItem(dir, null, "demo", Npm: new NpmCommand(Path.Combine(_root, "tools", "gone", "npm.cmd"), new[] { "run", "dev" }))));
     }
 
     [Fact]
     public void AStudioTabKeepsItsTitleAndIsntAClaudeSession()
     {
         var dir = Project("demo", """{"dependencies":{"remotion":"4"}}""");
-        var item = new LaunchItem(dir, null, "demo", "Remotion Studio: demo", Studio: NpmDev());
+        var item = new LaunchItem(dir, null, "demo", "Remotion Npm: demo", Npm: NpmDev());
         Assert.False(item.IsClaude);
         var tab = Launcher.BuildTabArgs(item, "claude");
-        Assert.StartsWith("new-tab --title \"Remotion Studio: demo\" --suppressApplicationTitle -d ", tab);
+        Assert.StartsWith("new-tab --title \"Remotion Npm: demo\" --suppressApplicationTitle -d ", tab);
         Assert.DoesNotContain("--resume", Launcher.BuildScript(item, "claude"));
         Assert.DoesNotContain("claude", Launcher.BuildScript(item, @"C:\x\claude.exe"));
     }
@@ -420,8 +522,8 @@ public sealed class RemotionStudioTests : IDisposable
         var npm = Path.Combine(toolDir, "npm.cmd");
         var outFile = Path.Combine(toolDir, "out.txt");
         File.WriteAllText(npm, "@echo off\r\ncd > \"%~dp0out.txt\"\r\necho %*>> \"%~dp0out.txt\"\r\necho ran> sk-ran-here.txt\r\n", Encoding.ASCII);
-        var script = Launcher.BuildStudioScript(new LaunchItem(dir, null, "demo", "Remotion Studio: demo",
-            Studio: new StudioCommand(npm, new[] { "run", "dev" })));
+        var script = Launcher.BuildNpmScript(new LaunchItem(dir, null, "demo", "Remotion Npm: demo",
+            Npm: new NpmCommand(npm, new[] { "run", "dev" })));
 
         var psi = new ProcessStartInfo(Launcher.PowerShellPath)
         {
@@ -438,71 +540,16 @@ public sealed class RemotionStudioTests : IDisposable
         return File.Exists(outFile) ? File.ReadAllText(outFile, Encoding.Default) : null;
     }
 
-    // ------------------------------------------------------------------ guard, browser, settings, dialog
+    // ------------------------------------------------------------------ guard
 
     [Fact]
-    public void StudioAndItsBrowserAddressOpenOnlyInsideTheirUserActions()
+    public void NpmLaunchesAreAllowedOnlyInsideTheirUserActions()
     {
-        var psi = RemotionStudio.BrowserStart(3000);
-        Assert.Equal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"), psi.FileName);
-        Assert.Equal("http://localhost:3000/", psi.Arguments);
-        Assert.False(psi.UseShellExecute);
+        var psi = new ProcessStartInfo(Launcher.ConhostPath, "x") { UseShellExecute = false };
         Assert.NotNull(LaunchGuard.Check(psi));
-        using (LaunchGuard.UserAction(LaunchGuard.OpenStudioInBrowser))
-            Assert.Null(LaunchGuard.Check(psi));
         using (LaunchGuard.UserAction(LaunchGuard.RemotionStudio))
-            Assert.Null(LaunchGuard.Check(new ProcessStartInfo(Launcher.ConhostPath, "x") { UseShellExecute = false }));
-        Assert.Throws<ArgumentOutOfRangeException>(() => RemotionStudio.BrowserStart(0));
-        Assert.Throws<ArgumentOutOfRangeException>(() => RemotionStudio.BrowserStart(70000));
-    }
-
-    [Fact]
-    public void SettingsThatCantBeReadArentReplacedByDefaults()
-    {
-        var path = Path.Combine(_root, "settings.json");
-        Assert.NotNull(AppSettings.TryLoad(path)); // missing: defaults, fine to save
-        File.WriteAllText(path, "{ not json");
-        Assert.Null(AppSettings.TryLoad(path));
-        new AppSettings { OpenIn = OpenMode.WindowsTerminalTab, LastRemotionProject = "x" }.Save(path);
-        Assert.Equal(OpenMode.WindowsTerminalTab, AppSettings.TryLoad(path)!.OpenIn);
-    }
-
-    [Fact]
-    public void TheLastProjectIsRememberedInSettings()
-    {
-        var path = Path.Combine(_root, "settings.json");
-        new AppSettings { LastRemotionProject = @"C:\Projects\demo" }.Save(path);
-        Assert.Equal(@"C:\Projects\demo", AppSettings.Load(path).LastRemotionProject);
-        Assert.DoesNotContain("remotion", File.ReadAllText(Path.Combine(_root, "settings.json")).Replace("lastRemotionProject", ""),
-            StringComparison.OrdinalIgnoreCase); // nothing else is written for it
-        new AppSettings().Save(path);
-        Assert.DoesNotContain("Remotion", File.ReadAllText(path));
-    }
-
-    [Fact]
-    public void TheDialogPicksTheLastUsedProjectFirst()
-    {
-        var rows = new[] { "alpha", "beta" }.Select(n => new RemotionRow(new RemotionProject(n, @"C:\Projects\" + n, null, true))).ToList();
-        Assert.Equal("beta", RemotionWindow.PickFirst(rows, @"c:\projects\BETA\")!.Name);
-        Assert.Equal("alpha", RemotionWindow.PickFirst(rows, @"C:\Projects\gone")!.Name);
-        Assert.Equal("alpha", RemotionWindow.PickFirst(rows, null)!.Name);
-        Assert.Null(RemotionWindow.PickFirst(new List<RemotionRow>(), "x"));
-    }
-
-    [Fact]
-    public void RowsShowTheRealDevScriptAndStatus()
-    {
-        var row = new RemotionRow(new RemotionProject("demo", Demo, "remotion studio --port 3100", false));
-        Assert.Contains("npm.cmd run dev", row.CommandText);
-        Assert.Contains("remotion studio --port 3100", row.CommandText);
-        Assert.Contains("npm install", row.Tooltip);
-        Assert.Equal(System.Windows.Visibility.Collapsed, row.RunningVisibility);
-        row.Running = new StudioInstance(new[] { 12 }, 3100);
-        Assert.Equal("running \u00B7 localhost:3100", row.RunningText);
-        Assert.Contains("http://localhost:3100/", row.Tooltip);
-        Assert.Contains("npx.cmd remotion studio", new RemotionRow(new RemotionProject("x", Demo, null, true)).CommandText);
-        var next = new RemotionRow(new RemotionProject("x", Demo, "next dev", true)).CommandText;
-        Assert.StartsWith("npx.cmd remotion studio", next);
-        Assert.Contains("next dev", next);
+            Assert.Null(LaunchGuard.Check(psi));
+        using (LaunchGuard.UserAction(LaunchGuard.DevServer))
+            Assert.Null(LaunchGuard.Check(psi));
     }
 }

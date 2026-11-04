@@ -8,14 +8,14 @@ namespace SessionKeeper.Services;
 /// One window/tab to open. SessionId null = start a fresh claude in the folder. Title (the session's nickname)
 /// becomes the window/tab title and is kept there (Claude's own title updates are switched off for it).
 /// With <paramref name="Terminal"/> set it's a terminal session instead (no claude): the shell opens in the
-/// folder and runs that command, which the user has confirmed. With <paramref name="Studio"/> set it starts Remotion
-/// Studio in the folder (npm.cmd run dev or npx.cmd remotion studio).
+/// folder and runs that command, which the user has confirmed. With <paramref name="Npm"/> set it starts Remotion
+/// Studio or the dev server in the folder (npm.cmd run dev or npx.cmd remotion studio), from the Tools menu.
 /// </summary>
 public sealed record LaunchItem(string ProjectDir, string? SessionId, string Label, string? Title = null, TerminalCommand? Terminal = null,
-    StudioCommand? Studio = null)
+    NpmCommand? Npm = null)
 {
-    /// <summary>A Claude Code session (new or resumed), not a terminal or Remotion Studio.</summary>
-    public bool IsClaude => Terminal == null && Studio == null;
+    /// <summary>A Claude Code session (new or resumed), not a terminal or an npm launch (Remotion Studio, dev server).</summary>
+    public bool IsClaude => Terminal == null && Npm == null;
 }
 
 public sealed class LaunchResult
@@ -156,22 +156,22 @@ public static class Launcher
             return "folder path is not valid";
         }
         if (it.SessionId != null && !SessionStore.IsValidSessionId(it.SessionId)) return "invalid session id";
-        if (it.Terminal != null && it.Studio != null) return "an entry can't be both a terminal and Remotion Studio";
+        if (it.Terminal != null && it.Npm != null) return "an entry can't be both a terminal and an npm launch";
         if (it.Terminal is { } t) return ValidateTerminal(t, it.SessionId);
-        if (it.Studio is { } s) return ValidateStudio(s, it.ProjectDir, it.SessionId);
+        if (it.Npm is { } s) return ValidateNpm(s, it.ProjectDir, it.SessionId);
         return null;
     }
 
     /// <summary>
-    /// Remotion Studio: only npm.cmd run dev or npx.cmd remotion studio, from a local folder that still has its
+    /// Remotion Studio and the dev server: only npm.cmd run dev or npx.cmd remotion studio, from a local folder that still has its
     /// package.json. npm.cmd runs through cmd.exe, which can't use a network (UNC) folder and would silently start in
     /// C:\Windows instead, so those are refused.
     /// </summary>
-    internal static string? ValidateStudio(StudioCommand s, string projectDir, string? sessionId)
+    internal static string? ValidateNpm(NpmCommand s, string projectDir, string? sessionId)
     {
-        if (sessionId != null) return "Remotion Studio can't carry a Claude session id";
+        if (sessionId != null) return s.What + " can't carry a Claude session id";
         if (projectDir.StartsWith(@"\\", StringComparison.Ordinal) || projectDir.StartsWith("//", StringComparison.Ordinal))
-            return "network (UNC) folders aren't supported for Remotion Studio";
+            return "network (UNC) folders aren't supported for " + s.What;
         if (RemotionStudio.Check(s, projectDir) is { } why) return why;
         if (RemotionStudio.CheckFolder(projectDir) is { } folderWhy) return folderWhy;
         try
@@ -255,7 +255,7 @@ public static class Launcher
     public static string BuildScript(LaunchItem it, string claude, string? configDir = null)
     {
         if (it.Terminal != null) return BuildTerminalScript(it);
-        if (it.Studio != null) return BuildStudioScript(it);
+        if (it.Npm != null) return BuildNpmScript(it);
         if (it.SessionId != null && !SessionStore.IsValidSessionId(it.SessionId))
             throw new ArgumentException("Invalid session id", nameof(it));
         var sb = new StringBuilder();
@@ -311,17 +311,17 @@ public static class Launcher
     }
 
     /// <summary>
-    /// The script for Remotion Studio. As for every launch, the folder is only a PsQuote literal, and Set-Location
+    /// The script for Remotion Studio or the dev server. As for every launch, the folder is only a PsQuote literal, and Set-Location
     /// runs with $ErrorActionPreference='Stop': if the folder can't be entered the script ends there (the shell
     /// stays open) and npm never runs, so it can't start in the wrong folder. The tool path and its fixed arguments
     /// are literals too. NoDefaultCurrentDirectoryInExePath stops cmd.exe (which runs npm.cmd) from picking up a
     /// node.exe from the folder instead of the installed one.
     /// </summary>
-    public static string BuildStudioScript(LaunchItem it)
+    public static string BuildNpmScript(LaunchItem it)
     {
-        var s = it.Studio ?? throw new ArgumentException("Not a Remotion Studio entry", nameof(it));
+        var s = it.Npm ?? throw new ArgumentException("Not an npm launch", nameof(it));
         if (RemotionStudio.Check(s, it.ProjectDir) is { } why) throw new ArgumentException(why, nameof(it));
-        if (it.ProjectDir.IndexOfAny(new[] { '&', '|', '<', '>', '^', '%' }) >= 0)
+        if (it.ProjectDir.IndexOfAny(RemotionStudio.CmdSpecial) >= 0)
             throw new ArgumentException("the folder path contains a cmd.exe command character", nameof(it));
         var label = NicknameStore.Clean(it.Label) ?? "project";
         var sb = new StringBuilder();
@@ -330,7 +330,7 @@ public static class Launcher
         sb.Append("try { $Host.UI.RawUI.WindowTitle = ").Append(PsQuote(SafeTitle(NicknameStore.Clean(it.Title) ?? label))).Append(" } catch { }; ");
         sb.Append("Set-Location -LiteralPath ").Append(PsQuote(it.ProjectDir)).Append("; ");
         sb.Append("$ErrorActionPreference = 'Continue'; ");
-        sb.Append("Write-Host ").Append(PsQuote("SessionKeeper: Remotion Studio for " + label + " in " + it.ProjectDir)).Append(" -ForegroundColor DarkGray; ");
+        sb.Append("Write-Host ").Append(PsQuote("SessionKeeper: " + s.What + " for " + label + " in " + it.ProjectDir)).Append(" -ForegroundColor DarkGray; ");
         sb.Append("Write-Host ").Append(PsQuote("SessionKeeper: running " + s.Display)).Append(" -ForegroundColor DarkGray; ");
         sb.Append("& ").Append(PsQuote(s.Exe));
         foreach (var a in s.Args) sb.Append(' ').Append(PsQuote(a));
@@ -383,7 +383,7 @@ public static class Launcher
     /// </summary>
     public static string BuildTabArgs(LaunchItem it, string claude, string? configDir = null)
     {
-        // Claude sessions with a nickname, and Studio tabs, keep their title (npm and cmd would otherwise replace it).
+        // Claude sessions with a nickname, and npm tabs, keep their title (npm and cmd would otherwise replace it).
         var nickname = it.Terminal == null ? NicknameStore.Clean(it.Title) : null;
         var sb = new StringBuilder("new-tab --title ").Append(WinQuote(SafeTitle(nickname ?? it.Title ?? it.Label)));
         if (nickname != null) sb.Append(" --suppressApplicationTitle");
@@ -452,7 +452,7 @@ public static class Launcher
     /// </summary>
     private static void LogTerminalCommand(LaunchItem it)
     {
-        if (it.Studio is { } s)
+        if (it.Npm is { } s)
         {
             LaunchGuard.LogEvent("COMMAND", $"action={LaunchGuard.CurrentAction ?? "(none)"}  label={NicknameStore.Clean(it.Label)}  folder={it.ProjectDir}  run={s.Exe} {string.Join(' ', s.Args)}");
             return;

@@ -19,7 +19,7 @@
 
         <TextBlock Text="Open sessions in" FontWeight="SemiBold"/>
         <TextBlock Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,2,0,6"
-                   Text="Used by Open, Reopen selected, Restore, New session, reopened terminals and Remotion Studio."/>
+                   Text="Used by Open, Reopen selected, Restore, New session, reopened terminals, and Remotion Studio and Dev server in the Tools menu."/>
         <RadioButton x:Name="OpenInPowerShell" GroupName="openIn" Content="PowerShell window" Checked="OpenIn_Checked"/>
         <RadioButton x:Name="OpenInTerminal" GroupName="openIn" Content="Windows Terminal tab" Margin="0,6,0,0" Checked="OpenIn_Checked"/>
         <TextBlock x:Name="TerminalMissingText" Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="21,3,0,0"

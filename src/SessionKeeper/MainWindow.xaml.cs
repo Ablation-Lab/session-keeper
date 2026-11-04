@@ -50,6 +50,7 @@ public partial class MainWindow : Window
         CurrentList.ItemsSource = _currentRows;
         RecentList.ItemsSource = _recentRows;
         TerminalList.ItemsSource = _terminalRows;
+        _git.Updated += GitChecked;
         ShowVersion(BuildInfo.Current, null);
         ShowRuntime(DotNetRuntime.Current, null, null);
         _timer.Tick += async (_, _) => await AutoRefreshAsync();
@@ -101,20 +102,195 @@ public partial class MainWindow : Window
 
     private void Help_Click(object sender, RoutedEventArgs e) => ShowHelp();
 
-    // ============================================================ Remotion Studio
+    // ============================================================ Tools (per row)
 
-    /// <summary>When Studio was last started for each folder: it takes a few seconds before it can be detected.</summary>
-    private readonly Dictionary<string, DateTime> _studioStarted = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly TimeSpan StudioStartupGrace = TimeSpan.FromSeconds(30);
+    /// <summary>When an npm tool was last started from here, per tool and folder: it takes a few seconds before it can be detected.</summary>
+    private readonly Dictionary<string, DateTime> _npmStarted = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan NpmStartupGrace = TimeSpan.FromSeconds(30);
 
-    private async void RemotionStudio_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// A row's Tools button: works out which tools apply to its folder (off the UI thread: small local reads only) and
+    /// opens the dropdown under the button. Clicking an item runs it straight away.
+    /// </summary>
+    private async void Tools_Click(object sender, RoutedEventArgs e)
     {
-        if (_launching) { SetAllStatus("Still opening the previous sessions…"); return; }
-        // Held from the first click until the launch is done, so a quick second click can't stack dialogs or launches.
-        _launching = true;
+        e.Handled = true;
+        if (sender is not FrameworkElement { DataContext: IProjectRow row } button || row.ProjectFolder is not { } dir) return;
+        button.IsEnabled = false;
         try
         {
-            await PickAndStartStudioAsync();
+            var (tools, vsCode) = await Task.Run(() =>
+            {
+                if (!FolderProbe.Exists(dir)) return ((List<ProjectTool>?)null, (string?)null);
+                var code = ProjectTools.FindVSCode();
+                return (ProjectTools.For(dir, code), code);
+            });
+            ToolsMenu.Show(ToolsMenu.Build(tools, vsCode, tool => _ = RunToolAsync(tool, dir, vsCode)), button);
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+            SetAllStatus("Couldn't read the project's tools: " + ex.Message);
+        }
+        finally
+        {
+            button.IsEnabled = ProjectRow.CanUseTools(row);
+        }
+    }
+
+    private async Task RunToolAsync(ProjectTool tool, string dir, string? vsCode)
+    {
+        var name = Fmt.FolderName(dir);
+        // The same folder checks as Open and Restore (a full, existing local path with nothing that can't be quoted),
+        // plus Windows' normal form, so "demo." can't open "demo".
+        if (await Task.Run(() => ProjectTools.CheckFolderPath(dir) ?? Launcher.Validate(new LaunchItem(dir, null, name))) is { } why)
+        {
+            MessageBox.Show(this, $"Couldn't open “{name}”: {why}.", "SessionKeeper", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        switch (tool.Kind)
+        {
+            case ToolKind.OpenFolder:
+                StartTool(LaunchGuard.OpenProjectFolder, () => ProjectTools.FolderStart(dir), "File Explorer: " + name, $"Opened {name} in File Explorer");
+                break;
+            case ToolKind.VSCode when vsCode != null:
+                StartTool(LaunchGuard.OpenInVSCode, () =>
+                {
+                    var psi = ProjectTools.VSCodeStart(vsCode, dir);
+                    Launcher.CleanEnvironment(psi); // its terminals shouldn't inherit a Claude session's variables
+                    return psi;
+                }, "VS Code: " + name, $"Opened {name} in VS Code");
+                break;
+            case ToolKind.GitHub when tool.Url != null:
+                StartTool(LaunchGuard.OpenGitHub, () => ProjectTools.BrowserStart(tool.Url), "Browser: " + tool.Url, "Opened " + tool.Url);
+                break;
+            case ToolKind.RemotionStudio:
+            case ToolKind.DevServer:
+                await StartNpmToolAsync(dir, tool.Kind);
+                break;
+        }
+    }
+
+    /// <summary>One process start for a Tools item, inside its own user action; a failure is shown, never thrown.</summary>
+    private void StartTool(string action, Func<System.Diagnostics.ProcessStartInfo> build, string purpose, string done)
+    {
+        try
+        {
+            using var scope = LaunchGuard.UserAction(action);
+            using var _ = LaunchGuard.Start(build(), purpose);
+            SetAllStatus(done);
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+            MessageBox.Show(this, "Couldn't open it:\n" + ex.Message, "SessionKeeper", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>How long ago this tool was started from here for this folder, if within the last 30 seconds.</summary>
+    private TimeSpan? RecentlyStarted(ToolKind kind, string dir)
+    {
+        if (!_npmStarted.TryGetValue(kind + "|" + dir.TrimEnd('\\'), out var at)) return null;
+        var ago = DateTime.UtcNow - at;
+        return ago < NpmStartupGrace ? ago : null;
+    }
+
+    /// <summary>
+    /// Starts Remotion Studio or the dev server for a project, unless one is already running there (then offers its
+    /// address instead). Everything is checked again at this point, off the UI thread: package.json must still have
+    /// what the menu showed, and the running check is fresh.
+    /// </summary>
+    private async Task StartNpmToolAsync(string dir, ToolKind kind)
+    {
+        if (_launching) { SetAllStatus("Still opening the previous sessions…"); return; }
+        _launching = true;
+        bool studio = kind == ToolKind.RemotionStudio;
+        string what = studio ? "Remotion Studio" : "The dev server";
+        var name = Fmt.FolderName(dir);
+        try
+        {
+            var (fits, running, command, problem) = await Task.Run(() =>
+            {
+                var pkg = RemotionStudio.ReadPackage(dir);
+                bool ok = studio ? pkg?.UsesRemotion == true : pkg?.DevScript != null;
+                if (!ok) return (false, (RunningServer?)null, (NpmCommand?)null, (string?)null);
+                var r = studio ? RemotionStudio.FindRunning(dir) : RemotionStudio.FindDevServer(dir);
+                string? why = null;
+                NpmCommand? c = null;
+                if (r == null)
+                    c = studio ? RemotionStudio.CommandFor(RemotionStudio.ReadProject(dir)!, RemotionStudio.FindTool, out why)
+                               : RemotionStudio.DevServerCommand(dir, RemotionStudio.FindTool, out why);
+                return (true, r, c, why);
+            });
+            if (!fits)
+            {
+                MessageBox.Show(this, studio ? $"“{name}” no longer has a package.json that uses Remotion."
+                                             : $"“{name}” no longer has a dev script in its package.json.",
+                    "SessionKeeper", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (running != null)
+            {
+                if (running.Port is { } port)
+                {
+                    var answer = MessageBox.Show(this,
+                        $"{what} is already running for “{name}” at {RemotionStudio.AddressFor(port)}\n\n" +
+                        "Open it in your browser instead of starting a second copy?",
+                        "Already running", MessageBoxButton.YesNo, MessageBoxImage.Information, MessageBoxResult.Yes);
+                    if (answer == MessageBoxResult.Yes)
+                        StartTool(LaunchGuard.OpenInBrowser, () => ProjectTools.BrowserStart(RemotionStudio.AddressFor(port)),
+                            "Browser: " + RemotionStudio.AddressFor(port), "Opened " + RemotionStudio.AddressFor(port));
+                    else SetAllStatus($"Not started: {what} is already running for {name}");
+                }
+                else
+                {
+                    MessageBox.Show(this,
+                        $"{what} is already running for “{name}” (process {string.Join(", ", running.Pids)}), but it isn't " +
+                        "listening on a port yet, so its address isn't known.\n\nA second copy wasn't started. Try again in a moment.",
+                        "Already running", MessageBoxButton.OK, MessageBoxImage.Information);
+                    SetAllStatus($"Not started: {what} is already running for {name}");
+                }
+                return;
+            }
+
+            // Started from here moments ago but not detectable yet (npm takes a few seconds to start the server).
+            if (RecentlyStarted(kind, dir) is { } ago)
+            {
+                var again = MessageBox.Show(this,
+                    $"{what} was started for “{name}” {Math.Max(1, (int)ago.TotalSeconds)} seconds ago and may still be starting.\n\n" +
+                    "Start another copy anyway?",
+                    "May still be starting", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+                if (again != MessageBoxResult.Yes)
+                {
+                    SetAllStatus($"Not started: {what} is still starting for {name}");
+                    return;
+                }
+            }
+
+            if (command == null)
+            {
+                MessageBox.Show(this, $"Couldn't start {(studio ? "Remotion Studio" : "the dev server")} for “{name}”: {problem}",
+                    "SessionKeeper", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var mode = (await Task.Run(() => AppSettings.Load())).OpenIn;
+            var item = new LaunchItem(dir, null, name, (studio ? "Remotion Studio: " : "Dev server: ") + name, Npm: command);
+            LaunchResult result;
+            using (LaunchGuard.UserAction(studio ? LaunchGuard.RemotionStudio : LaunchGuard.DevServer))
+                result = await Task.Run(() => Launcher.Launch(new[] { item }, mode));
+            ReportLaunch(result, single: true);
+            if (result.OpenedItems.Count > 0)
+            {
+                _npmStarted[kind + "|" + dir.TrimEnd('\\')] = DateTime.UtcNow;
+                SetAllStatus($"Started {(studio ? "Remotion Studio" : "the dev server")} for {name} ({command.Display})");
+            }
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+            MessageBox.Show(this, $"Couldn't start it:\n{ex.Message}", "SessionKeeper", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
         {
@@ -122,161 +298,39 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task PickAndStartStudioAsync()
-    {
-        AppSettings settings;
-        List<RemotionProject> projects;
-        string root;
-        try
-        {
-            settings = await Task.Run(() => AppSettings.Load());
-            root = string.IsNullOrWhiteSpace(settings.RemotionProjectsFolder) ? RemotionStudio.DefaultProjectsFolder : settings.RemotionProjectsFolder;
-            projects = await Task.Run(() => RemotionStudio.FindProjects(root));
-        }
-        catch (Exception ex)
-        {
-            App.Log(ex);
-            MessageBox.Show(this, "Couldn't list the Remotion projects:\n" + ex.Message, "SessionKeeper", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-        var dlg = new RemotionWindow(projects, root, settings.LastRemotionProject, dirs => RemotionStudio.FindRunning(dirs)) { Owner = this };
-        if (dlg.ShowDialog() != true || dlg.Project is not { } chosen) return;
-        await StartStudioAsync(chosen.Dir);
-    }
+    // ============================================================ "uncommitted changes" badge
 
-    /// <summary>How long ago Studio was started from here for this folder, if within the last 30 seconds.</summary>
-    private TimeSpan? RecentlyStarted(string dir)
+    private readonly GitStatusCache _git = new();
+
+    /// <summary>Every row on the Current, Recent and Snapshots lists that has a project folder.</summary>
+    private IEnumerable<IProjectRow> ProjectRows()
     {
-        if (!_studioStarted.TryGetValue(dir.TrimEnd('\\'), out var at)) return null;
-        var ago = DateTime.UtcNow - at;
-        return ago < StudioStartupGrace ? ago : null;
+        foreach (var r in _currentRows) yield return r;
+        foreach (var r in _recentRows) yield return r;
+        if (SnapshotSessions.ItemsSource is System.Collections.IEnumerable snap)
+            foreach (var r in snap.OfType<IProjectRow>()) yield return r;
     }
 
     /// <summary>
-    /// Starts Remotion Studio for a project, unless it's already running there (then offers its address instead).
-    /// Everything is checked again at this point, off the UI thread: the folder must still hold a Remotion
-    /// package.json, and the running check is fresh rather than what the dialog showed. The caller holds _launching.
+    /// Shows what's known for each row straight away and asks for background checks of anything stale. Called after
+    /// every list update; the checks run off the UI thread and report back through <see cref="GitChecked"/>.
     /// </summary>
-    private async Task StartStudioAsync(string dir)
+    private void UpdateGitBadges()
     {
-        try
-        {
-            var (project, running, command, problem) = await Task.Run(() =>
-            {
-                var p = RemotionStudio.ReadProject(dir);
-                if (p == null) return (p, (StudioInstance?)null, (StudioCommand?)null, (string?)null);
-                var r = RemotionStudio.FindRunning(p.Dir);
-                string? why = null;
-                var c = r == null ? RemotionStudio.CommandFor(p, RemotionStudio.FindTool, out why) : null;
-                return (p, r, c, why);
-            });
-            var name = project?.Name ?? Fmt.FolderName(dir);
-            if (project == null)
-            {
-                MessageBox.Show(this, $"“{name}” no longer has a package.json that uses Remotion ({dir}).", "Remotion Studio",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-
-            if (running != null)
-            {
-                RememberRemotionProject(project.Dir);
-                if (running.Port is { } port)
-                {
-                    var answer = MessageBox.Show(this,
-                        $"Remotion Studio is already running for “{name}” at {RemotionStudio.AddressFor(port)}\n\n" +
-                        "Open it in your browser instead of starting a second copy?",
-                        "Remotion Studio already running", MessageBoxButton.YesNo, MessageBoxImage.Information, MessageBoxResult.Yes);
-                    if (answer == MessageBoxResult.Yes) OpenStudioInBrowser(port);
-                    else SetAllStatus($"Not started: Remotion Studio is already running for {name}");
-                }
-                else
-                {
-                    MessageBox.Show(this,
-                        $"Remotion Studio is already running for “{name}” (process {string.Join(", ", running.Pids)}), but it isn't " +
-                        "listening on a port yet, so its address isn't known.\n\nA second copy wasn't started. Try again in a moment.",
-                        "Remotion Studio already running", MessageBoxButton.OK, MessageBoxImage.Information);
-                    SetAllStatus($"Not started: Remotion Studio is already running for {name}");
-                }
-                return;
-            }
-
-            // Started from here moments ago but not detectable yet (npm and Studio take a few seconds to start).
-            if (RecentlyStarted(project.Dir) is { } ago)
-            {
-                var again = MessageBox.Show(this,
-                    $"Remotion Studio was started for “{name}” {Math.Max(1, (int)ago.TotalSeconds)} seconds ago and may still be starting.\n\n" +
-                    "Start another copy anyway?",
-                    "Remotion Studio may be starting", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
-                if (again != MessageBoxResult.Yes)
-                {
-                    SetAllStatus($"Not started: Remotion Studio is still starting for {name}");
-                    return;
-                }
-            }
-
-            if (command == null)
-            {
-                MessageBox.Show(this, $"Couldn't start Remotion Studio for “{name}”: {problem}", "Remotion Studio",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            var mode = (await Task.Run(() => AppSettings.Load())).OpenIn;
-            var item = new LaunchItem(project.Dir, null, name, "Remotion Studio: " + name, Studio: command);
-            LaunchResult result;
-            using (LaunchGuard.UserAction(LaunchGuard.RemotionStudio))
-                result = await Task.Run(() => Launcher.Launch(new[] { item }, mode));
-            ReportLaunch(result, single: true);
-            if (result.OpenedItems.Count > 0)
-            {
-                _studioStarted[project.Dir.TrimEnd('\\')] = DateTime.UtcNow;
-                RememberRemotionProject(project.Dir);
-                SetAllStatus($"Started Remotion Studio for {name} ({command.Display})");
-            }
-        }
-        catch (Exception ex)
-        {
-            App.Log(ex);
-            MessageBox.Show(this, "Couldn't start Remotion Studio:\n" + ex.Message, "SessionKeeper", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
+        var all = ProjectRows().ToList();
+        foreach (var r in all.Where(r => string.IsNullOrWhiteSpace(r.ProjectFolder) || r.FolderMissing)) r.Git.State = null; // no stale badge
+        var rows = all.Where(r => !string.IsNullOrWhiteSpace(r.ProjectFolder) && !r.FolderMissing).ToList();
+        foreach (var r in rows) r.Git.State = _git.Get(r.ProjectFolder);
+        _git.Request(rows.Select(r => r.ProjectFolder));
     }
 
-    private void OpenStudioInBrowser(int port)
+    private void GitChecked(string folder) => Dispatcher.BeginInvoke(() =>
     {
-        var address = RemotionStudio.AddressFor(port);
-        try
-        {
-            using var action = LaunchGuard.UserAction(LaunchGuard.OpenStudioInBrowser);
-            using var _ = LaunchGuard.Start(RemotionStudio.BrowserStart(port), "Browser: Remotion Studio at " + address);
-            SetAllStatus("Opened " + address);
-        }
-        catch (Exception ex)
-        {
-            App.Log(ex);
-            MessageBox.Show(this, $"Couldn't open the browser:\n{ex.Message}\n\nStudio's address is {address}", "SessionKeeper",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-    }
-
-    /// <summary>
-    /// Remembers the project so the Remotion Studio dialog picks it first next time. Best effort, on the UI thread like
-    /// the Settings window's own saves (so the two never write at once), and skipped if the settings file couldn't be
-    /// read, so real settings are never replaced by defaults.
-    /// </summary>
-    private static void RememberRemotionProject(string dir)
-    {
-        try
-        {
-            if (AppSettings.TryLoad() is not { } s || s.LastRemotionProject == dir) return;
-            s.LastRemotionProject = dir;
-            s.Save();
-        }
-        catch (Exception ex)
-        {
-            App.Log(ex);
-        }
-    }
+        var state = _git.Get(folder);
+        foreach (var r in ProjectRows())
+            if (r.ProjectFolder != null && string.Equals(GitStatusCache.Key(r.ProjectFolder), folder, StringComparison.OrdinalIgnoreCase))
+                r.Git.State = r.FolderMissing ? null : state;
+    });
 
     /// <summary>Opens the help on the topic for the tab you're on.</summary>
     private void ShowHelp()
@@ -443,6 +497,7 @@ public partial class MainWindow : Window
                 .ToList());
 
             SyncCurrentRows(rows);
+            UpdateGitBadges();
             _runningIds = WithRecentlyLaunched(rows.Where(r => r.SessionId != null).Select(r => r.SessionId!));
             CurrentEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             SaveCurrentButton.IsEnabled = rows.Any(r => r.ProjectDir != null);
@@ -657,6 +712,7 @@ public partial class MainWindow : Window
             RecentRow.Sync(_recentRows, fresh,
                 added: r => r.PropertyChanged += RecentRow_PropertyChanged,
                 removed: r => r.PropertyChanged -= RecentRow_PropertyChanged);
+            UpdateGitBadges();
 
             RecentEmpty.Visibility = _recentRows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             _recentStatus = $"{_recentRows.Count} session{(_recentRows.Count == 1 ? "" : "s")} · updated {DateTime.Now:HH:mm:ss}";
@@ -809,6 +865,7 @@ public partial class MainWindow : Window
         int missing = rows.Count(r => r.FolderMissing) + terminalRows.Count(r => r.FolderMissing);
         SnapshotMeta.Text = baseMeta + (missing > 0 ? $" · {missing} folder{(missing == 1 ? "" : "s")} missing" : "");
         SnapshotSessions.ItemsSource = rows.Cast<object>().Concat(terminalRows).ToList();
+        UpdateGitBadges();
     }
 
     /// <summary>A snapshot's terminal entries (anything not marked "terminal" in a hand-edited file is ignored).</summary>

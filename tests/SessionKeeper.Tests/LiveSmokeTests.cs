@@ -62,17 +62,28 @@ public sealed class LiveSmokeTests(ITestOutputHelper output)
         }
     }
 
-    /// <summary>Prints the Remotion projects and any running Studio (read-only). Same SK_LIVE=1 switch.</summary>
+    /// <summary>
+    /// Prints each folder's Tools items, running Studio or dev server, and git badge for the folders under the
+    /// SK_LIVE_PROJECTS folder (default C:\Projects). Read-only, and git status runs hidden. Same SK_LIVE=1 switch.
+    /// </summary>
     [SkippableFact]
-    public void LiveRemotion()
+    public void LiveTools()
     {
-        Skip.IfNot(Environment.GetEnvironmentVariable("SK_LIVE") == "1", "Reads the real projects folder and process list; set SK_LIVE=1 to run.");
-        var sw = Stopwatch.StartNew();
-        var projects = RemotionStudio.FindProjects();
-        var running = RemotionStudio.FindRunning(projects.Select(p => p.Dir));
-        output.WriteLine($"Remotion projects: {projects.Count} ({sw.ElapsedMilliseconds} ms), listeners: {Native.ListeningTcpPorts().Count}");
-        foreach (var p in projects)
-            output.WriteLine($"  {p.Name,-20} dev={p.DevScript ?? "(none)"}  installed={p.Installed}  running={running[p.Dir]?.Address ?? (running[p.Dir] != null ? "yes, no port" : "no")}");
+        Skip.IfNot(Environment.GetEnvironmentVariable("SK_LIVE") == "1", "Reads real project folders and the process list; set SK_LIVE=1 to run.");
+        var root = Environment.GetEnvironmentVariable("SK_LIVE_PROJECTS") ?? @"C:\Projects";
+        var code = ProjectTools.FindVSCode();
+        output.WriteLine($"VS Code: {code ?? "(not installed)"}  listeners: {Native.ListeningTcpPorts().Count}");
+        foreach (var dir in Directory.EnumerateDirectories(root))
+        {
+            var sw = Stopwatch.StartNew();
+            var tools = ProjectTools.For(dir, code);
+            var studio = RemotionStudio.FindRunning(dir);
+            var dev = RemotionStudio.FindDevServer(dir);
+            var git = GitStatusCache.Query(dir);
+            output.WriteLine($"  {Path.GetFileName(dir),-28} {sw.ElapsedMilliseconds,4} ms  tools: {string.Join(", ", tools.Select(t => t.Title + (t.Detail != null ? " [" + t.Detail + "]" : "")))}");
+            if (studio != null || dev != null) output.WriteLine($"      running: studio={studio?.Address ?? (studio != null ? "no port" : "-")} dev={dev?.Address ?? (dev != null ? "no port" : "-")}");
+            if (git?.HasWork == true) output.WriteLine("      git: " + git.BadgeText + " | " + git.Describe().Replace("\n", " | "));
+        }
     }
 
     private static string Trim(string? s) => s == null ? "" : s.Length > 70 ? s[..70] + "…" : s;

@@ -77,7 +77,7 @@ public sealed class TerminalRow : Observable
 }
 
 /// <summary>A terminal entry in a snapshot (shown alongside the Claude sessions).</summary>
-public sealed class SnapshotTerminalRow : Observable
+public sealed class SnapshotTerminalRow : Observable, IProjectRow
 {
     public required SnapshotTerminal Terminal { get; init; }
     /// <summary>Set off the UI thread via <see cref="Services.FolderProbe"/>.</summary>
@@ -91,6 +91,11 @@ public sealed class SnapshotTerminalRow : Observable
     public string Note => Fmt.Trim(Terminal.Note, 1000);
     public Visibility NoteVisibility => string.IsNullOrWhiteSpace(Terminal.Note) ? Visibility.Collapsed : Visibility.Visible;
     public bool CanOpen => !string.IsNullOrWhiteSpace(Terminal.ProjectDir);
+    // Tools button and "uncommitted changes" badge (IProjectRow).
+    public GitBadge Git { get; } = new();
+    public string? ProjectFolder => Terminal.ProjectDir;
+    public bool CanUseTools => ProjectRow.CanUseTools(this);
+    public string ToolsTooltip => ProjectRow.ToolsTooltip(this);
     public string OpenTooltip => !CanOpen ? "Can't open: no folder recorded"
         : Terminal.CommandLine == null ? "Open the shell in this folder"
         : "Open a shell in this folder; you'll see the exact command before anything runs";

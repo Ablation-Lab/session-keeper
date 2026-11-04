@@ -30,6 +30,23 @@
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="ToolTipService.ShowOnDisabled" Value="True"/>
         </Style>
+        <!-- Tools on a row: a dropdown of what applies to that project (folder, editor, GitHub, Studio, dev server). -->
+        <Style x:Key="RowToolsButton" TargetType="Button" BasedOn="{StaticResource RowOpenButton}">
+            <Setter Property="Content" Value="Tools"/>
+            <Setter Property="Padding" Value="9,3"/>
+            <Setter Property="AutomationProperties.Name" Value="Tools"/>
+            <Setter Property="ContentTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding}"/>
+                            <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="8"
+                                       Margin="5,1,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <!-- Right-click a row: Open, Rename (your own name for the session), Clear name. -->
         <ContextMenu x:Key="RowMenu" x:Shared="False" Opened="RowMenu_Opened">
             <MenuItem Header="Open" Click="MenuOpen_Click"/>
@@ -65,14 +82,6 @@
             <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Margin="8,0,0,0" Padding="6,2"
                     Content="&#xE897;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="14"
                     ToolTip="Help (F1)" AutomationProperties.Name="Help" Click="Help_Click"/>
-            <Button x:Name="RemotionButton" DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Margin="8,0,0,0" Padding="6,2"
-                    ToolTip="Open Remotion Studio for one of your Remotion projects" AutomationProperties.Name="Remotion Studio"
-                    Click="RemotionStudio_Click">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="&#xE714;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
-                    <TextBlock Text="Remotion Studio" Margin="6,0,0,0" VerticalAlignment="Center"/>
-                </StackPanel>
-            </Button>
             <TextBlock x:Name="StatusText" Style="{StaticResource MutedText}" HorizontalAlignment="Right" VerticalAlignment="Center"
                        TextTrimming="CharacterEllipsis" Margin="12,0,0,0"/>
         </DockPanel>
@@ -103,6 +112,10 @@
                                         <Border Style="{StaticResource Badge}" Background="{StaticResource Warn}" Visibility="{Binding MissingVisibility}">
                                             <TextBlock Text="folder missing" FontSize="11" Foreground="{StaticResource AccentText}"/>
                                         </Border>
+                                        <Border Style="{StaticResource Badge}" Background="{StaticResource Note}" Visibility="{Binding Git.Visibility}"
+                                                ToolTip="{Binding Git.Tooltip}">
+                                            <TextBlock Text="{Binding Git.Text}" FontSize="11" Foreground="{StaticResource AccentText}"/>
+                                        </Border>
                                     </StackPanel>
                                     <TextBlock Grid.Column="2" Text="{Binding SecondaryText}" Style="{StaticResource SecondaryLabel}" MaxWidth="220"
                                                Visibility="{Binding SecondaryVisibility}" ToolTip="{Binding ProjectDir}"/>
@@ -114,8 +127,12 @@
                                 <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusBrush}" FontSize="12"
                                            HorizontalAlignment="Right" Margin="0,2,0,0"/>
                             </StackPanel>
-                            <Button Grid.Column="3" Style="{StaticResource RowOpenButton}" Click="Open_Click"
-                                    IsEnabled="{Binding CanOpen}" ToolTip="{Binding OpenTooltip}"/>
+                            <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Style="{StaticResource RowToolsButton}" Click="Tools_Click"
+                                        IsEnabled="{Binding CanUseTools}" ToolTip="{Binding ToolsTooltip}"/>
+                                <Button Style="{StaticResource RowOpenButton}" Margin="6,0,0,0" Click="Open_Click"
+                                        IsEnabled="{Binding CanOpen}" ToolTip="{Binding OpenTooltip}"/>
+                            </StackPanel>
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
@@ -170,6 +187,10 @@
                                         <Border Style="{StaticResource Badge}" Background="{StaticResource Warn}" Visibility="{Binding MissingVisibility}">
                                             <TextBlock Text="folder missing" FontSize="11" Foreground="{StaticResource AccentText}"/>
                                         </Border>
+                                        <Border Style="{StaticResource Badge}" Background="{StaticResource Note}" Visibility="{Binding Git.Visibility}"
+                                                ToolTip="{Binding Git.Tooltip}">
+                                            <TextBlock Text="{Binding Git.Text}" FontSize="11" Foreground="{StaticResource AccentText}"/>
+                                        </Border>
                                     </StackPanel>
                                     <TextBlock Grid.Column="2" Text="{Binding SecondaryText}" Style="{StaticResource SecondaryLabel}" MaxWidth="220"
                                                Visibility="{Binding SecondaryVisibility}" ToolTip="{Binding Info.ProjectDir}"/>
@@ -181,8 +202,12 @@
                                 <TextBlock Text="{Binding ShortId}" Style="{StaticResource MonoText}" HorizontalAlignment="Right" Margin="0,3,0,0"
                                            ToolTip="{Binding Info.SessionId}"/>
                             </StackPanel>
-                            <Button Grid.Column="3" Style="{StaticResource RowOpenButton}" Click="Open_Click"
-                                    IsEnabled="{Binding CanOpen}" ToolTip="{Binding OpenTooltip}"/>
+                            <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Style="{StaticResource RowToolsButton}" Click="Tools_Click"
+                                        IsEnabled="{Binding CanUseTools}" ToolTip="{Binding ToolsTooltip}"/>
+                                <Button Style="{StaticResource RowOpenButton}" Margin="6,0,0,0" Click="Open_Click"
+                                        IsEnabled="{Binding CanOpen}" ToolTip="{Binding OpenTooltip}"/>
+                            </StackPanel>
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
@@ -249,6 +274,10 @@
                                             <Border Style="{StaticResource Badge}" Background="{StaticResource Warn}" Visibility="{Binding MissingVisibility}">
                                                 <TextBlock Text="folder missing" FontSize="11" Foreground="{StaticResource AccentText}"/>
                                             </Border>
+                                            <Border Style="{StaticResource Badge}" Background="{StaticResource Note}" Visibility="{Binding Git.Visibility}"
+                                                    ToolTip="{Binding Git.Tooltip}">
+                                                <TextBlock Text="{Binding Git.Text}" FontSize="11" Foreground="{StaticResource AccentText}"/>
+                                            </Border>
                                         </StackPanel>
                                         <TextBlock Grid.Column="2" Text="{Binding SecondaryText}" Style="{StaticResource SecondaryLabel}" MaxWidth="220"
                                                    ToolTip="{Binding Terminal.ProjectDir}"/>
@@ -257,8 +286,12 @@
                                     <TextBlock Text="{Binding Note}" Foreground="{StaticResource Note}" FontStyle="Italic" FontSize="12"
                                                TextWrapping="Wrap" Margin="0,3,0,0" Visibility="{Binding NoteVisibility}"/>
                                 </StackPanel>
-                                <Button Grid.Column="1" Style="{StaticResource RowOpenButton}" Click="Open_Click"
-                                        IsEnabled="{Binding CanOpen}" ToolTip="{Binding OpenTooltip}"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Style="{StaticResource RowToolsButton}" Click="Tools_Click"
+                                            IsEnabled="{Binding CanUseTools}" ToolTip="{Binding ToolsTooltip}"/>
+                                    <Button Style="{StaticResource RowOpenButton}" Margin="6,0,0,0" Click="Open_Click"
+                                            IsEnabled="{Binding CanOpen}" ToolTip="{Binding OpenTooltip}"/>
+                                </StackPanel>
                             </Grid>
                         </DataTemplate>
                         <DataTemplate DataType="{x:Type vm:SnapshotSessionRow}">
@@ -282,6 +315,10 @@
                                         <Border Style="{StaticResource Badge}" Background="{StaticResource Warn}" Visibility="{Binding MissingVisibility}">
                                             <TextBlock Text="folder missing" FontSize="11" Foreground="{StaticResource AccentText}"/>
                                         </Border>
+                                        <Border Style="{StaticResource Badge}" Background="{StaticResource Note}" Visibility="{Binding Git.Visibility}"
+                                                ToolTip="{Binding Git.Tooltip}">
+                                            <TextBlock Text="{Binding Git.Text}" FontSize="11" Foreground="{StaticResource AccentText}"/>
+                                        </Border>
                                     </StackPanel>
                                     <TextBlock Grid.Column="2" Text="{Binding SecondaryText}" Style="{StaticResource SecondaryLabel}" MaxWidth="220"
                                                Visibility="{Binding SecondaryVisibility}" ToolTip="{Binding Session.ProjectDir}"/>
@@ -290,8 +327,12 @@
                                 <TextBlock Text="{Binding Note}" Foreground="{StaticResource Note}" FontStyle="Italic" FontSize="12"
                                            TextWrapping="Wrap" Margin="0,3,0,0" Visibility="{Binding NoteVisibility}"/>
                             </StackPanel>
-                            <Button Grid.Column="1" Style="{StaticResource RowOpenButton}" Click="Open_Click"
-                                    IsEnabled="{Binding CanOpen}" ToolTip="{Binding OpenTooltip}"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Style="{StaticResource RowToolsButton}" Click="Tools_Click"
+                                        IsEnabled="{Binding CanUseTools}" ToolTip="{Binding ToolsTooltip}"/>
+                                <Button Style="{StaticResource RowOpenButton}" Margin="6,0,0,0" Click="Open_Click"
+                                        IsEnabled="{Binding CanOpen}" ToolTip="{Binding OpenTooltip}"/>
+                            </StackPanel>
                             </Grid>
                         </DataTemplate>
                     </ListBox.Resources>

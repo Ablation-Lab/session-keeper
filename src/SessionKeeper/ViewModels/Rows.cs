@@ -138,7 +138,7 @@ internal static class Brushes2
 /// A row on the "Current" tab. Rows are updated in place on each refresh (keyed by PID) so tooltips,
 /// scroll position and focus survive the 10-second auto-refresh.
 /// </summary>
-public sealed class CurrentRow : Observable, INameableRow
+public sealed class CurrentRow : Observable, INameableRow, IProjectRow
 {
     private RunningSession _running;
     private SessionInfo? _info;
@@ -188,6 +188,11 @@ public sealed class CurrentRow : Observable, INameableRow
 
     /// <summary>Only a matched session with a conversation file can be resumed by ID.</summary>
     public bool CanOpen => ProjectDir != null && SessionId != null && Info != null;
+    // Tools button and "uncommitted changes" badge (IProjectRow).
+    public GitBadge Git { get; } = new();
+    public string? ProjectFolder => ProjectDir;
+    public bool CanUseTools => ProjectRow.CanUseTools(this);
+    public string ToolsTooltip => ProjectRow.ToolsTooltip(this);
     public string OpenTooltip => CanOpen
         ? "Open this session in a new window (it's already running, so you'll be asked first)"
         : Running.State is RunState.Unmatched or RunState.Starting
@@ -238,7 +243,7 @@ public sealed class CurrentRow : Observable, INameableRow
 }
 
 /// <summary>A row on the "Recent" tab.</summary>
-public sealed class RecentRow : Observable, INameableRow
+public sealed class RecentRow : Observable, INameableRow, IProjectRow
 {
     /// <summary>
     /// Brings <paramref name="rows"/> in line with <paramref name="fresh"/> in place (keyed by session ID), so the
@@ -323,6 +328,11 @@ public sealed class RecentRow : Observable, INameableRow
     public string WhenText => Fmt.When(Info.LastActive);
     public string ShortId => Fmt.ShortId(Info.SessionId);
     public bool CanOpen => Info.ProjectDir != null;
+    // Tools button and "uncommitted changes" badge (IProjectRow).
+    public GitBadge Git { get; } = new();
+    public string? ProjectFolder => Info.ProjectDir;
+    public bool CanUseTools => ProjectRow.CanUseTools(this);
+    public string ToolsTooltip => ProjectRow.ToolsTooltip(this);
     public string OpenTooltip => CanOpen ? "Open this session in a new window" : "Can't open: the session's folder isn't known";
     public LaunchItem? ToLaunchItem() => CanOpen ? new LaunchItem(Info.ProjectDir!, Info.SessionId, FolderName, Nickname) : null;
     public bool IsToday => Info.LastActive.ToLocalTime().Date == DateTime.Today;
@@ -354,7 +364,7 @@ public sealed class SnapshotListItem
         : File.Error ?? "";
 }
 
-public sealed class SnapshotSessionRow : Observable, INameableRow
+public sealed class SnapshotSessionRow : Observable, INameableRow, IProjectRow
 {
     private bool _isRunning;
     private string? _liveNickname;
@@ -397,6 +407,11 @@ public sealed class SnapshotSessionRow : Observable, INameableRow
         ? "New session in this folder"
         : Fmt.Trim(Session.Summary, 160); // the title is now the main label
     public bool CanOpen => !string.IsNullOrWhiteSpace(Session.ProjectDir);
+    // Tools button and "uncommitted changes" badge (IProjectRow).
+    public GitBadge Git { get; } = new();
+    public string? ProjectFolder => Session.ProjectDir;
+    public bool CanUseTools => ProjectRow.CanUseTools(this);
+    public string ToolsTooltip => ProjectRow.ToolsTooltip(this);
     public string OpenTooltip => !CanOpen ? "Can't open: no folder recorded"
         : Session.SessionId == null ? "Start a new Claude Code session in this folder (no session ID was saved)"
         : "Open this session in a new window";

@@ -14,7 +14,8 @@ A small Windows app (C# / .NET 8 WPF) that shows which Claude Code sessions are 
 | **Open one session** | Open any row with its **Open** button, a double-click or Enter. You're warned before a second copy of a running session opens. | [Opening a session](#opening-a-session) |
 | **Names** | Give a session your own name. It's shown on every tab and becomes its window or tab title. | [Naming sessions](#naming-sessions) |
 | **New session** | Start a fresh Claude Code session in a recent or chosen folder, optionally named. | [Starting a new session](#starting-a-new-session) |
-| **Remotion Studio** | Start Remotion Studio for one of your Remotion projects, or open the one that's already running in your browser. | [Remotion Studio](#remotion-studio) |
+| **Tools on every row** | One **Tools** button per row opens the project's folder, VS Code, GitHub page, Remotion Studio or dev server, showing only what applies. A running Studio or dev server is offered in your browser instead of a second copy. | [Tools](#tools-open-a-projects-folder-editor-github-page-or-dev-server) |
+| **Uncommitted changes badge** | Rows whose project has uncommitted or unpushed git work are marked, with the details on hover. Checked in the background, so the list never waits. | [Uncommitted changes badge](#uncommitted-changes-badge) |
 | **Built-in help** | A **?** button next to Settings (or F1) explains each tab and how to use it, opening on the tab you're on. | [Using SessionKeeper](#using-sessionkeeper) |
 | **Windows integration** | PowerShell windows or Windows Terminal tabs, Start with Windows (in the tray), a Start menu shortcut. | [Settings](#settings) |
 | **Version footer** | Shows the build, warns when your clone has newer app changes than your installed copy, and checks the .NET runtime. | [Reading the version footer](#reading-the-version-footer) |
@@ -59,7 +60,7 @@ You need Windows 10 or 11 and the [.NET 8 SDK](https://dotnet.microsoft.com/down
 
 ## Using SessionKeeper
 
-Open **SessionKeeper** from the Start menu. The window has four tabs at the top, **Current**, **Recent**, **Snapshots** and **Terminals**, a gear button at the top right for Settings, a **?** button next to it (or F1) for built-in help, and a [**Remotion Studio**](#remotion-studio) button. The help opens on the topic for the tab you're on and covers each tab, opening and naming sessions, settings, keyboard shortcuts and safety. The first three tabs' bottom bars have a **New session…** button. Hover over any row to see its full folder path and the first 8 characters of its session ID. The tooltip also shows the last message on Current rows, and the first and last messages on Recent rows.
+Open **SessionKeeper** from the Start menu. The window has four tabs at the top, **Current**, **Recent**, **Snapshots** and **Terminals**, a gear button at the top right for Settings, and a **?** button next to it (or F1) for built-in help. The help opens on the topic for the tab you're on and covers each tab, opening and naming sessions, settings, keyboard shortcuts and safety. The first three tabs' bottom bars have a **New session…** button, and their rows have a [**Tools**](#tools-open-a-projects-folder-editor-github-page-or-dev-server) button next to **Open**. Hover over any row to see its full folder path and the first 8 characters of its session ID. The tooltip also shows the last message on Current rows, and the first and last messages on Recent rows.
 
 ### Current tab: what's running now
 
@@ -225,31 +226,77 @@ An idle Command Prompt or PowerShell has nothing to run, so its **Open** button 
 - The environment is the new window's, not the old one's. For example, an activated Python virtual environment or variables set by hand in the old shell aren't there.
 - Only an `.exe` given by a plain local full path is ever run: not a network or device path, not one with `..` in it. A saved command that's anything else, or that contains line breaks, control or escape characters, or invisible characters that could make it look different from what runs (such as right-to-left overrides or zero-width spaces), or is longer than 4,000 characters, isn't offered. The dialog says why and offers the shell only.
 
-### Remotion Studio
+### Tools: open a project's folder, editor, GitHub page or dev server
 
-The **Remotion Studio** button at the top right opens [Remotion](https://www.remotion.dev/) Studio for one of your video projects, in the same kind of window as everything else (a PowerShell window or a Windows Terminal tab, per [Settings](#settings)).
+Every row on the **Current**, **Recent** and **Snapshots** tabs has a **Tools** button next to **Open**. It opens a small list of things you can do with that row's project folder, each with a small icon. The list shows only the items that apply to that project, and clicking an item does it straight away. If the row has no folder, or its folder is missing, the button is greyed out.
 
-1. Click **Remotion Studio**. The dialog lists the folders directly under `C:\Projects` whose `package.json` lists `remotion` or an `@remotion/` package. The project you used last is picked.
-2. Each row shows the folder and what will run: `npm.cmd run dev` and what the project's `dev` script does, or `npx.cmd remotion studio` if it has no `dev` script or its `dev` script doesn't run `remotion studio` (for example `next dev` in a project that only uses Remotion's player). A **needs npm install** badge means Remotion isn't in the project's `node_modules` yet. A green **running · localhost:3000** badge means Studio is already running for it.
-3. Pick a project and click **Start Studio**, or double-click it.
+| Item | Shown when | What it does |
+|---|---|---|
+| **Open folder** | Always | Opens the project folder in File Explorer. |
+| **VS Code** | VS Code is installed | Opens the project folder in VS Code. |
+| **GitHub** | The folder's git repository has a `github.com` remote | Opens the repository's page in your browser. |
+| **Remotion Studio** | `package.json` lists `remotion` or an `@remotion/` package | Starts Remotion Studio for the project. |
+| **Dev server** | `package.json` has a `dev` script (other than one that starts Remotion Studio) | Runs `npm.cmd run dev` in the project folder. |
 
-If Studio is already running for that project, you're told so and offered its address (for example `http://localhost:3000/`) to open in your browser instead. A second copy is never started. If it's still starting and has no address yet, you're told to try again in a moment.
+The grey text on the right of an item says what it opens or runs: `owner/repo` for GitHub, and the command or `dev` script for Remotion Studio and Dev server.
+
+**Open folder**
+1. Click **Tools** on the row.
+2. Click **Open folder**. File Explorer opens on the project folder.
+
+**VS Code**
+1. Click **Tools** on the row. If **VS Code** isn't listed, SessionKeeper didn't find it: it looks in VS Code's usual install folders (per user and per machine), its App Paths registration, and `code.cmd` on your `PATH`.
+2. Click **VS Code**. The project opens in VS Code, or VS Code switches to it if it's already open.
+
+**GitHub**
+1. Click **Tools** on the row. **GitHub** is listed when the repository has a GitHub remote (`origin` is preferred), with `owner/repo` on the right.
+2. Click **GitHub**. The repository's page opens in your default browser.
+
+**Remotion Studio**
+1. Click **Tools** on a row whose project uses [Remotion](https://www.remotion.dev/).
+2. Click **Remotion Studio**. Studio starts in a new PowerShell window or Windows Terminal tab (per [Settings](#settings)), in the project folder. It runs `npm.cmd run dev` when the project's `dev` script starts Studio, otherwise `npx.cmd remotion studio` (for example, when the project only uses Remotion's player and its `dev` script is `next dev`).
+3. If Studio is already running for that project, you're told so and offered its address (for example `http://localhost:3000/`). Click **Yes** to open it in your browser instead of starting a second copy.
+
+**Dev server**
+1. Click **Tools** on a row whose project has a `dev` script in `package.json`.
+2. Click **Dev server**. `npm.cmd run dev` starts in a new PowerShell window or Windows Terminal tab, in the project folder.
+3. If the dev server is already running for that project, you're told so and offered its address. Click **Yes** to open it in your browser instead of starting a second copy.
 
 **Good to know**
-- It uses `npm.cmd` and `npx.cmd`, not `npm` and `npx`: those run `npm.ps1`, which PowerShell's script execution policy can block. They're taken from the Node.js install folder (`%ProgramFiles%\nodejs`) or from a full path on `PATH`, never from the project folder.
-- Only two commands are ever run, `npm.cmd run dev` and `npx.cmd remotion studio`, and only in the folder you picked. `npm run dev` runs whatever the project's `dev` script says, which is why the dialog shows it.
-- Some folders are refused, with the reason shown:
+- Remotion Studio and Dev server use `npm.cmd` and `npx.cmd`, not `npm` and `npx`: those run `npm.ps1`, which PowerShell's script execution policy can block. They're taken from the Node.js install folder (`%ProgramFiles%\nodejs`) or from a full path on `PATH`, never from the project folder.
+- Only two npm commands are ever run, `npm.cmd run dev` and `npx.cmd remotion studio`, and only in that row's folder. `npm run dev` runs whatever the project's `dev` script says, which is why the menu shows it.
+- Some folders can't run npm, and you're told why:
   - a path containing `&`, `|`, `<`, `>`, `^` or `%`, because `cmd.exe` (which runs npm's `.cmd` files) reads the folder path unquoted in places, so `demo&calc` would start calc;
   - a project whose `.npmrc` sets `prefix`, `globalconfig` or `userconfig`, because `npm.cmd` asks npm for its prefix first and would then run an npm from there instead of the installed one;
   - network (UNC) folders, where `cmd.exe` silently starts in `C:\Windows` instead.
-- If you click Start again within 30 seconds of starting Studio for the same project (before it's listening, so it can't be detected yet), you're asked before a second copy starts.
-- "Already running" means a `node` process running Remotion's `studio` (or older `preview`) command whose working folder is the project, or a folder inside it if Remotion comes from the project's own `node_modules`. Its address is the lowest port that process listens on, read from Windows' TCP table. A Studio started in a similarly named folder (`demo-2` for `demo`) doesn't count.
-- To look somewhere other than `C:\Projects`, set `remotionProjectsFolder` in `%APPDATA%\SessionKeeper\settings.json`. Only folders directly inside it are listed, and names ending in a dot or space are skipped.
+- Each item checks the folder again when you click it, so a folder that has gone since the list was shown isn't opened. The path must also be in Windows' normal form: a folder name ending in a dot or space (Windows would quietly open the folder without it), `.`/`..` segments or forward slashes are refused.
+- **VS Code** starts without any `ELECTRON_*` or `NODE_OPTIONS` variables SessionKeeper may have inherited (for example when started from a VS Code terminal), since those could change how VS Code starts.
+- If you start Studio or the dev server again within 30 seconds (before it's listening, so it can't be detected yet), you're asked before a second copy starts. If it's running but has no address yet, you're told to try again in a moment.
+- "Already running" for Remotion Studio means a `node` process running Remotion's `studio` (or older `preview`) command whose working folder is the project, or a folder inside it if Remotion comes from the project's own `node_modules`. For Dev server it means an `npm run dev` process, started from anywhere, whose working folder (or that of one of its own processes) is the project. The address is the lowest port listened on by the processes running in the project, read from Windows' TCP table, so with `npm run dev --workspaces` at a monorepo root each project is offered its own port. A Studio in a subfolder that has its own `package.json` belongs to that subfolder, not the parent project. A server in a similarly named folder (`demo-2` for `demo`) doesn't count.
+
+### Uncommitted changes badge
+
+A row whose project folder is in a git repository with work that isn't saved to GitHub (or another remote) gets a badge:
+
+- **uncommitted changes:** files are changed, staged, new (untracked) or in conflict.
+- **unpushed commits:** everything is committed, but the branch is ahead of its upstream, or it has never been pushed although the repository has a remote.
+
+To see the details:
+1. Find a row with the badge on the **Current**, **Recent** or **Snapshots** tab.
+2. Hover over the badge. The tooltip shows how many files are staged, modified, untracked or in conflict, the first few file names, how many commits are unpushed, the branch, and when it was checked.
+
+The check runs `git status --porcelain=v2 --branch -z --ignore-submodules=all` in the background, at most two at a time, and keeps each result for a minute, so the list never waits for it and the badge can lag a little behind your last commit. It runs with optional locks off, so it never writes to the repository, and with `core.fsmonitor` off.
+
+Some repositories get no badge, and are looked at again only every ten minutes:
+- network folders, and repositories whose git folder (for a worktree, the one its `.git` file points to) isn't local;
+- repositories whose own `.git\config` could make `git status` run a command or read files elsewhere: a filter driver (Git LFS's standard one is fine), `include`/`includeIf`, `core.worktree`, `core.excludesFile` or `core.attributesFile`, or object alternates. Skipped repositories are noted once per check in the launch log (`GITSKIP`);
+- a `.git` folder at a drive root or directly in your user folder (usually a dotfiles repository, not the project's);
+- a check that fails or takes more than 10 seconds.
 
 ### Settings
 
 1. Click the gear button at the top right.
-2. Choose how sessions open under **Open sessions in**. This applies to **Open**, **Reopen selected**, **Restore**, **New session**, reopened terminals and **Remotion Studio**.
+2. Choose how sessions open under **Open sessions in**. This applies to **Open**, **Reopen selected**, **Restore**, **New session**, reopened terminals, and **Remotion Studio** and **Dev server** in the Tools menu.
    - **PowerShell window** (the default): each session opens in its own Windows PowerShell window.
    - **Windows Terminal tab:** sessions open as tabs in a Windows Terminal window. This option is greyed out if Terminal isn't installed.
 3. Optionally, tick **Start with Windows**. SessionKeeper then starts in the system tray when you sign in. Click the tray icon to open it, or right-click it and choose **Exit**. It's off by default.
@@ -334,7 +381,7 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
 
 ### Settings file
 
-`%APPDATA%\SessionKeeper\settings.json` stores **Open sessions in**, the optional `sourceRepo`, the Remotion project you used last (`lastRemotionProject`) and the optional `remotionProjectsFolder`. Your session names are in `%APPDATA%\SessionKeeper\nicknames.json`. Start with Windows is a per-user entry under `HKCU\…\CurrentVersion\Run`, and the Start menu shortcut is `SessionKeeper.lnk` in your own Start menu folder. Neither is stored in the settings file.
+`%APPDATA%\SessionKeeper\settings.json` stores **Open sessions in** and the optional `sourceRepo`. Your session names are in `%APPDATA%\SessionKeeper\nicknames.json`. Start with Windows is a per-user entry under `HKCU\…\CurrentVersion\Run`, and the Start menu shortcut is `SessionKeeper.lnk` in your own Start menu folder. Neither is stored in the settings file.
 
 ### How it works
 
@@ -347,7 +394,8 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
 | Opening sessions | **PowerShell window:** `conhost.exe powershell -NoExit -EncodedCommand …`. Starting through conhost keeps it a real PowerShell window even when Windows' default terminal is Windows Terminal. **Windows Terminal tab:** `wt -w <name> new-tab -d <folder> powershell -NoExit -EncodedCommand …`. Both run `claude --resume <id>` in the session's folder. |
 | Snapshots | Readable JSON in `%APPDATA%\SessionKeeper\snapshots\`, with an optional note for the whole snapshot and per-session notes. |
 | Terminal sessions | One process-list snapshot (PID, parent, exe name), one pass over the desktop's console windows (class and owner only), then query-only handles on each terminal's own processes for the command line, start time and folder. Parent links are checked against start times, so a reused process ID can't attach a program to the wrong terminal. A scan takes a few milliseconds. |
-| Remotion Studio | The same window or tab as Claude sessions. The script enters the project folder (or stops), then runs `npm.cmd run dev` or `npx.cmd remotion studio` by full path. "Already running" comes from the process list, command lines, working folders and Windows' TCP listener table (`GetExtendedTcpTable`); nothing connects to Studio. The browser address opens through `explorer.exe`. |
+| Tools menu | Which items apply comes from small local reads: `package.json` and the repository's `.git\config` (no git process). **Open folder**, **GitHub** and a running server's address go through `explorer.exe`, and **VS Code** starts `Code.exe`, each by full path with the folder or address as the only argument. **Remotion Studio** and **Dev server** use the same window or tab as Claude sessions: the script enters the project folder (or stops), then runs `npm.cmd run dev` or `npx.cmd remotion studio` by full path. "Already running" comes from the process list, command lines, start times, working folders and Windows' TCP listener table (`GetExtendedTcpTable`); nothing connects to the server. |
+| Uncommitted changes badge | A hidden, read-only `git status --porcelain=v2 --branch -z` per repository, off the UI thread, at most two at a time, cached for a minute. |
 | Reopening terminals | The same window or tab as Claude sessions. The script enters the folder, then starts the saved program through .NET's process API with the saved arguments as one string, so neither PowerShell nor SessionKeeper parses them. |
 
 `CLAUDE_CONFIG_DIR` is respected if set.
@@ -355,11 +403,12 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
 ### Safety
 
 - **Launches only on request.**
-  - Every process SessionKeeper starts goes through one gatekeeper (`LaunchGuard`), which refuses anything outside an explicit click on **Open**, **Reopen selected**, **Restore**, **New session** (its **Start** button), **Remotion Studio** (its **Start Studio** button, or **Yes** to open a running Studio's address) or **Open folder**.
+  - Every process SessionKeeper starts goes through one gatekeeper (`LaunchGuard`), which refuses anything outside an explicit click on **Open**, **Reopen selected**, **Restore**, **New session** (its **Start** button), an item in a row's **Tools** menu (or **Yes** to open a running server's address) or **Open folder**.
   - The gatekeeper stops SessionKeeper's own code from launching things by accident (for example from a timer). It isn't a security boundary: it doesn't protect against other software running as you.
   - Background work has no such permission, so it can never launch anything. That covers auto-refresh, session detection, the tray and the command line.
   - Shell execution (URIs such as `ms-settings:`, documents, verbs) is refused, and so is `wt.exe` without a `new-tab` command. A test fails if any other code calls `Process.Start`.
-  - The only background process is the read-only `git` query described above, run under the same rules.
+  - The only background processes are read-only `git` queries, run under the same rules: the version check described above, and `git status` for the [uncommitted changes badge](#uncommitted-changes-badge). Both run hidden, with optional locks and `core.fsmonitor` off and a timeout. Only `rev-list`, `rev-parse` and `status` with fixed arguments are allowed, and `status` doesn't run at all in a repository whose own config names a filter command, include files or locations elsewhere (see [the badge](#uncommitted-changes-badge)). The badge's repeated checks are logged only when they fail or time out, so the log stays readable.
+  - The browser is only ever opened on a running server's `http://localhost:<port>/` address or a `https://github.com/owner/repo` page. Any other address is refused.
 - **Launch log.** Every launch, every refused attempt, each user action, and app start and exit are logged with a timestamp and the calling source line. The logs are in `%APPDATA%\SessionKeeper\logs\launches-yyyy-MM-dd.log` and kept for 14 days. If a window ever opens that you didn't ask for, check the log for that time: no `LAUNCH` line means SessionKeeper didn't open it.
   - **What's in it:** the program started and the first 300 characters of its arguments (which can include a full folder path and, for Windows Terminal, the tab title, so your session name), a purpose line with the folder names of the sessions opened, and, for the version check, the repository folder and git arguments. The session scripts themselves are base64, cut off at 300 characters. Snapshot notes are never logged.
   - `COMMAND` lines for reopened terminals: the label, folder and the full command that ran (at most 4,000 characters), with likely passwords, tokens and keys replaced by `***`. The snapshot file itself stores the command unredacted, so it can be re-run, which is why the Save dialog marks commands that look like they contain one.
@@ -381,7 +430,7 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
   - `claude` is resolved to a full path, and relative `PATH` entries are ignored, so a repository can't plant its own `claude.cmd`.
   - `NoDefaultCurrentDirectoryInExePath` is set in each window, so npm's `claude.cmd` shim can't pick up a `node.exe` from the project folder.
   - A conversation is only resumed in the folder it belongs to.
-  - Remotion Studio runs only `npm.cmd run dev` or `npx.cmd remotion studio`, with the tool taken by full path from outside the project. The folder is checked again just before launching. Folders that `cmd.exe` would misread (`& | < > ^ %` in the path, or a network path) and projects whose `.npmrc` redirects npm are refused. A test runs the generated script against a folder named with spaces, straight and curly quotes, `;`, brackets, `$(...)` and a backtick and checks the tool ran in exactly that folder, and that nothing runs if the folder can't be entered.
+  - Remotion Studio and Dev server run only `npm.cmd run dev` or `npx.cmd remotion studio`, with the tool taken by full path from outside the project. The folder is checked again just before launching. Folders that `cmd.exe` would misread (`& | < > ^ %` in the path, or a network path) and projects whose `.npmrc` redirects npm are refused. A test runs the generated script against a folder named with spaces, straight and curly quotes, `;`, brackets, `$(...)` and a backtick and checks the tool ran in exactly that folder, and that nothing runs if the folder can't be entered.
 - If SessionKeeper itself was started from inside a Claude Code session, it inherited nine session-scoped variables that would stop the new `claude` from starting normally. They're removed before launching, unless you've set them permanently (user or machine environment): `CLAUDECODE`, `CLAUDE_PID`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_SESSION_ATTENDED`, `CLAUDE_CODE_MESSAGING_SOCKET`, `CLAUDE_CODE_MESSAGING_TOKEN` and `CLAUDE_CODE_SSE_PORT`. Every other `CLAUDE*` variable (such as `CLAUDE_CONFIG_DIR` or `CLAUDE_CODE_USE_BEDROCK`) is passed through, and the names of non-permanent ones are written to the launch log.
 
 ### Limits
@@ -389,5 +438,6 @@ Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. The
 - Claude Code's registry and file formats are internal and could change in a future version. If they do, the Current tab falls back to listing *unmatched* processes.
 - Node-based installs (`node.exe … claude-code`) are matched through the registry only. They won't appear as *unmatched* when unregistered.
 - The Terminals tab has its own limits: see [What it can and can't see](#terminals-tab-other-agents-programs-and-shells).
-- Remotion Studio lists only folders directly inside the projects folder, not nested ones. A Studio running as administrator, or one whose working folder can't be read and whose Remotion isn't in the project's `node_modules`, isn't recognised as running.
+- Tools: a Studio or dev server running as administrator, or a Studio whose working folder can't be read and whose Remotion isn't in the project's `node_modules`, isn't recognised as running. A dev server started without `npm run dev` (for example `npx vite`, `pnpm dev` or `yarn dev`) isn't either. **GitHub** recognises `github.com` remotes only, not GitHub Enterprise or other hosts.
+- The uncommitted changes badge needs Git for Windows (`git.exe` on `PATH` or in its usual install folder). Without it, no badge is shown.
 - `claude.exe` is found in `%USERPROFILE%\.local\bin`, then on `PATH`, then as npm's `claude.cmd`. If none of these exist, the windows run `claude` and rely on `PATH`.

@@ -245,10 +245,16 @@
                             <DockPanel>
                                 <TextBlock DockPanel.Dock="Right" Text="{TemplateBinding InputGestureText}" Foreground="{StaticResource Faint}"
                                            Margin="16,0,0,0" VerticalAlignment="Center"/>
+                                <!-- 16 px icon (the Tools menu); collapsed for items without one, such as the row menu -->
+                                <ContentPresenter x:Name="icon" ContentSource="Icon" Width="16" Height="16" Margin="0,0,9,0"
+                                                  VerticalAlignment="Center" DockPanel.Dock="Left"/>
                                 <ContentPresenter ContentSource="Header" VerticalAlignment="Center" RecognizesAccessKey="True"/>
                             </DockPanel>
                         </Border>
                         <ControlTemplate.Triggers>
+                            <Trigger Property="Icon" Value="{x:Null}">
+                                <Setter TargetName="icon" Property="Visibility" Value="Collapsed"/>
+                            </Trigger>
                             <Trigger Property="IsHighlighted" Value="True">
                                 <Setter TargetName="bd" Property="Background" Value="{StaticResource Hover}"/>
                             </Trigger>

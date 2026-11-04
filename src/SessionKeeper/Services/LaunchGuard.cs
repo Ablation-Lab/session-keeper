@@ -9,7 +9,8 @@ namespace SessionKeeper.Services;
 /// The only way SessionKeeper starts a process.
 ///
 /// - A launch is allowed only inside an explicit user action (<see cref="UserAction"/>), opened by the
-///   Open, Reopen, Restore, New session, Remotion Studio and Open folder buttons (Snapshots tab and Settings). Background work (auto-refresh, session detection, the
+///   Open, Reopen, Restore, New session and Open folder buttons (Snapshots tab and Settings) and the items of a row's
+///   Tools menu. Background work (auto-refresh, session detection, the
 ///   tray, the command line) has no such scope, so any launch attempted from there is refused.
 /// - Shell execution is refused outright (no URIs, documents or verbs handed to the shell), the
 ///   executable must be a full path, and wt.exe must be given a new-tab command (wt with no or
@@ -25,10 +26,18 @@ public static class LaunchGuard
     public const string OpenSnapshotsFolder = "Open snapshots folder";
     public const string OpenRepoFolder = "Open repo folder";
     public const string NewSession = "New session";
-    public const string RemotionStudio = "Remotion Studio";
-    public const string OpenStudioInBrowser = "Open Remotion Studio in browser";
+    // The Tools menu on a row.
+    public const string OpenProjectFolder = "Tools: Open folder";
+    public const string OpenInVSCode = "Tools: VS Code";
+    public const string OpenGitHub = "Tools: GitHub";
+    public const string RemotionStudio = "Tools: Remotion Studio";
+    public const string DevServer = "Tools: Dev server";
+    public const string OpenInBrowser = "Tools: open running server in browser";
     private static readonly HashSet<string> AllowedActions = new()
-        { Open, Reopen, Restore, OpenSnapshotsFolder, OpenRepoFolder, NewSession, RemotionStudio, OpenStudioInBrowser };
+    {
+        Open, Reopen, Restore, OpenSnapshotsFolder, OpenRepoFolder, NewSession,
+        OpenProjectFolder, OpenInVSCode, OpenGitHub, RemotionStudio, DevServer, OpenInBrowser,
+    };
 
     private static readonly AsyncLocal<string?> CurrentActionSlot = new();
     private static readonly object LogGate = new();
@@ -108,7 +117,7 @@ public static class LaunchGuard
     internal static string? Check(ProcessStartInfo psi)
     {
         if (CurrentActionSlot.Value == null)
-            return "not inside an explicit user action (Open, Reopen, Restore, New session, Remotion Studio or an Open folder button)";
+            return "not inside an explicit user action (Open, Reopen, Restore, New session, a Tools item or an Open folder button)";
         if (psi.UseShellExecute)
             return "shell execution is not allowed";
         if (string.IsNullOrWhiteSpace(psi.FileName) || !Path.IsPathFullyQualified(psi.FileName))
@@ -123,7 +132,9 @@ public static class LaunchGuard
 
     public sealed record ToolResult(int ExitCode, string StdOut, bool TimedOut);
 
-    private static readonly HashSet<string> ReadOnlyGitCommands = new(StringComparer.Ordinal) { "rev-parse", "rev-list" };
+    private static readonly HashSet<string> ReadOnlyGitCommands = new(StringComparer.Ordinal) { "rev-parse", "rev-list", "status" };
+    /// <summary>git status only with these (machine-readable output; --no-optional-locks keeps it from writing the index).</summary>
+    private static readonly HashSet<string> StatusArgs = new(StringComparer.Ordinal) { "--porcelain=v2", "--branch", "-z", "--ignore-submodules=all" };
     private static readonly System.Text.RegularExpressions.Regex GitRevisionArg = new(
         @"^(--count|--verify|--quiet|--short|HEAD|[0-9a-f]{7,64}|[0-9a-f]{7,64}\.\.HEAD)$");
     private static readonly System.Text.RegularExpressions.Regex GitPathspecArg = new(@"^[A-Za-z0-9_][A-Za-z0-9_./-]*$");
@@ -131,11 +142,14 @@ public static class LaunchGuard
     /// <summary>
     /// Runs a read-only git query for the version footer. It isn't a user-visible launch, so no user action is
     /// needed, but it follows the same rules as every other process start: absolute path, no shell, a hidden
-    /// window, logged. Only <c>rev-parse</c>/<c>rev-list</c> with revision/path arguments are allowed, optional
-    /// locks are disabled so git never writes to the repository, and the process is ended on timeout.
+    /// window, logged. Only <c>rev-parse</c>/<c>rev-list</c> with revision/path arguments, and <c>status</c> with
+    /// fixed machine-readable options (the "uncommitted changes" badge), are allowed. Optional locks are disabled so
+    /// git never writes to the repository, and the process is ended on timeout. With <paramref name="logRoutine"/>
+    /// false (the badge's repeated checks) only refusals, failures and timeouts are logged, so the log stays readable.
     /// Returns null if refused or if git couldn't be run (callers stay quiet).
     /// </summary>
     public static ToolResult? RunReadOnlyGit(string gitExe, string repoDir, string command, IReadOnlyList<string> args, TimeSpan timeout,
+        bool logRoutine = true,
         [CallerMemberName] string caller = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
     {
         var where = Where(file, line, caller);
@@ -162,7 +176,7 @@ public static class LaunchGuard
         psi.Environment["GIT_TERMINAL_PROMPT"] = "0";
         foreach (var v in new[] { "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE" }) psi.Environment.Remove(v);
 
-        Log("TOOL", what);
+        if (logRoutine) Log("TOOL", what);
         try
         {
             using var p = Process.Start(psi);
@@ -177,7 +191,13 @@ public static class LaunchGuard
                 return new ToolResult(-1, "", TimedOut: true);
             }
             p.WaitForExit();
-            Log("TOOLDONE", $"caller={where}  pid={p.Id}  exit={p.ExitCode}");
+            // A child process that outlives git could hold its output open: don't wait on that forever.
+            if (!stdout.Wait(TimeSpan.FromSeconds(2)))
+            {
+                Log("TIMEOUT", $"caller={where}  pid={p.Id}  output not closed  repo={repoDir}");
+                return new ToolResult(-1, "", TimedOut: true);
+            }
+            if (logRoutine || p.ExitCode != 0) Log("TOOLDONE", $"caller={where}  pid={p.Id}  exit={p.ExitCode}  repo={repoDir}");
             return new ToolResult(p.ExitCode, stdout.Result, TimedOut: false);
         }
         catch (Exception ex)
@@ -195,7 +215,9 @@ public static class LaunchGuard
         if (string.IsNullOrWhiteSpace(repoDir) || !Path.IsPathFullyQualified(repoDir))
             return "the repository must be a full path";
         if (!ReadOnlyGitCommands.Contains(command))
-            return "only read-only git queries (rev-parse, rev-list) are allowed";
+            return "only read-only git queries (rev-parse, rev-list, status) are allowed";
+        if (command == "status")
+            return args.All(StatusArgs.Contains) && args.Distinct().Count() == args.Count ? null : "git status only takes --porcelain=v2, --branch, -z and --ignore-submodules=all";
         bool pathspecs = false;
         foreach (var a in args)
         {

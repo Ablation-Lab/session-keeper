@@ -31,14 +31,6 @@ public sealed class AppSettings
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? SourceRepo { get; set; }
 
-    /// <summary>The folder the Remotion Studio button last opened, so it's picked first next time.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? LastRemotionProject { get; set; }
-
-    /// <summary>Optional: where the Remotion Studio button looks for projects (default C:\Projects).</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? RemotionProjectsFolder { get; set; }
-
     private static readonly JsonSerializerOptions Json = new()
     {
         WriteIndented = true,
@@ -47,28 +39,6 @@ public sealed class AppSettings
 
     public static string DefaultPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SessionKeeper", "settings.json");
-
-    /// <summary>
-    /// Like <see cref="Load"/>, but null when the file exists and couldn't be read (locked, corrupt or too big), so a
-    /// caller about to save doesn't overwrite real settings with defaults. A missing file gives defaults.
-    /// </summary>
-    public static AppSettings? TryLoad(string? path = null)
-    {
-        path ??= DefaultPath;
-        try
-        {
-            if (!File.Exists(path)) return new AppSettings();
-            if (new FileInfo(path).Length > 64 * 1024) return null;
-            var s = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path, Encoding.UTF8), Json);
-            if (s == null) return null;
-            if (!Enum.IsDefined(s.OpenIn)) s.OpenIn = OpenMode.PowerShellWindow;
-            return s;
-        }
-        catch
-        {
-            return null;
-        }
-    }
 
     public static AppSettings Load(string? path = null)
     {

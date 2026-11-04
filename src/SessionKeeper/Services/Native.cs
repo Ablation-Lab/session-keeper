@@ -338,6 +338,46 @@ internal static class Native
         return list;
     }
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ShFileInfo
+    {
+        public IntPtr Icon;
+        public int IconIndex;
+        public uint Attributes;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string DisplayName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)] public string TypeName;
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SHGetFileInfo(string path, uint attributes, ref ShFileInfo info, uint size, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern bool DestroyIcon(IntPtr icon);
+
+    private const uint SHGFI_ICON = 0x100, SHGFI_SMALLICON = 0x1;
+
+    /// <summary>
+    /// A program's small (16 px) icon as Windows shows it, for the Tools menu. The file is only read; the caller must
+    /// pass the handle to <see cref="FreeIcon"/>. Zero if there's none.
+    /// </summary>
+    public static IntPtr SmallFileIcon(string path)
+    {
+        try
+        {
+            var info = new ShFileInfo();
+            return SHGetFileInfo(path, 0, ref info, (uint)Marshal.SizeOf<ShFileInfo>(), SHGFI_ICON | SHGFI_SMALLICON) != IntPtr.Zero ? info.Icon : IntPtr.Zero;
+        }
+        catch
+        {
+            return IntPtr.Zero;
+        }
+    }
+
+    public static void FreeIcon(IntPtr icon)
+    {
+        if (icon != IntPtr.Zero) DestroyIcon(icon);
+    }
+
     public static void UseDarkTitleBar(IntPtr hwnd)
     {
         try

@@ -15,7 +15,7 @@ public sealed record HelpSection(string Id, string Title, string Summary, IReadO
 /// </summary>
 public static class HelpContent
 {
-    public const string Overview = "overview", Current = "current", Recent = "recent", Snapshots = "snapshots", Terminals = "terminals";
+    public const string Overview = "overview", Current = "current", Recent = "recent", Snapshots = "snapshots", Terminals = "terminals", Tools = "tools";
 
     public static readonly IReadOnlyList<HelpSection> Sections = new HelpSection[]
     {
@@ -34,7 +34,7 @@ public static class HelpContent
                 {
                     "Hover over any row to see its full folder, session ID and last messages.",
                     "The gear button opens **Settings**; the **?** button (or F1) opens this help.",
-                    "**Remotion Studio** (top right) starts Remotion Studio for one of your Remotion projects.",
+                    "Each row's **Tools** button opens its project folder, VS Code, GitHub page, Remotion Studio or dev server. A yellow badge means uncommitted or unpushed work.",
                     "Nothing opens unless you click a button. SessionKeeper only reads Claude Code's files; it never changes them.",
                     "Lists refresh every 10 seconds while the window is showing.",
                 }),
@@ -154,22 +154,34 @@ public static class HelpContent
                 }),
             }),
 
-        new("remotion", "Remotion Studio",
-            "The Remotion Studio button (top right) opens Remotion Studio for one of your video projects.",
+        new(Tools, "Tools and badges",
+            "Each row on the Current, Recent and Snapshots tabs has a **Tools** button for its project folder, and a badge when the folder has work that isn't committed or pushed.",
             new HelpBlock[]
             {
-                new("Start Studio", new[]
+                new("Use Tools", new[]
                 {
-                    "Click **Remotion Studio**. It lists the folders in C:\\Projects whose package.json uses Remotion, with the one you used last picked.",
-                    "Pick a project and click **Start Studio** (or double-click it).",
-                    "Studio opens as a PowerShell window or Windows Terminal tab, as set in Settings. It runs npm.cmd run dev, or npx.cmd remotion studio if the project's dev script doesn't run Studio.",
+                    "Click **Tools** next to a row's Open button.",
+                    "The list shows only what applies to that project. Click an item and it happens straight away.",
                 }, Numbered: true),
+                new("The items", new[]
+                {
+                    "**Open folder:** the project in File Explorer.",
+                    "**VS Code:** the project in VS Code (shown only if VS Code is installed).",
+                    "**GitHub:** the repository's page in your browser (shown only if the folder has a GitHub remote).",
+                    "**Remotion Studio:** for projects whose package.json uses Remotion. Runs npm.cmd run dev, or npx.cmd remotion studio if the dev script doesn't start Studio.",
+                    "**Dev server:** for other projects with a dev script in package.json. Runs npm.cmd run dev.",
+                    "Remotion Studio and Dev server open as a PowerShell window or Windows Terminal tab, as set in Settings. If one is already running for that project, you're offered its address in your browser instead of a second copy.",
+                }),
+                new("The badge", new[]
+                {
+                    "**uncommitted changes:** the project's git repository has changed, staged or new files. **unpushed commits:** everything is committed, but some commits (or the whole branch) aren't pushed yet.",
+                    "Hover over the badge for the details: counts, the first few files, and how far ahead the branch is.",
+                    "It's checked in the background and refreshed about once a minute, so it can lag a little behind your last commit.",
+                }),
                 new("Good to know", new[]
                 {
-                    "A green **running** badge means Studio is already running for that project, and shows its address. Starting it again offers to open that address in your browser instead of a second copy.",
-                    "**needs npm install** means Remotion isn't in the project's node_modules yet: run npm install in the folder first.",
-                    "Each row shows what the dev script runs. Only npm.cmd run dev or npx.cmd remotion studio is ever started, and only in the folder you picked.",
-                    "Folders whose path has & | < > ^ or % are refused (cmd.exe, which runs npm, would misread them), and so are projects whose .npmrc points npm somewhere else.",
+                    "Folders whose path has & | < > ^ or % can't run npm (cmd.exe would misread them), and neither can projects whose .npmrc points npm somewhere else.",
+                    "A dev server is recognised as running when it was started with npm run dev, from anywhere. One started another way (npx vite, pnpm, yarn) isn't.",
                 }),
             }),
 
@@ -200,7 +212,7 @@ public static class HelpContent
             {
                 new(null, new[]
                 {
-                    "**Only on your click:** windows open only from Open, Reopen selected, Restore, New session, Remotion Studio and Open folder. Every launch is logged in %APPDATA%\\SessionKeeper\\logs.",
+                    "**Only on your click:** windows open only from Open, Reopen selected, Restore, New session, a Tools item and Open folder. Every launch is logged in %APPDATA%\\SessionKeeper\\logs.",
                     "**Read-only:** Claude Code's files and processes, and the terminals on the Terminals tab, are only ever read, never changed or closed.",
                     "**Your data:** snapshots, settings and session names live in %APPDATA%\\SessionKeeper.",
                     "**More detail:** README.md in the SessionKeeper repository covers everything, including the command line and the Claude Code skill.",
