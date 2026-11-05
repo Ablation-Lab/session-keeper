@@ -155,8 +155,8 @@ public sealed class PluginTests
     private static readonly Regex OldName = new(@"session-?keeper", RegexOptions.IgnoreCase);
 
     /// <summary>
-    /// The app was renamed from SessionKeeper. The old name stays only where it's needed: the "The name" section of each
-    /// README and the plugin README's note on what the update moves (what the plugin directory scans).
+    /// The app was renamed from SessionKeeper. In the plugin and the READMEs, the old name is only in the "The name"
+    /// section of each README.
     /// </summary>
     [Fact]
     public void TheOldNameIsOnlyInTheNameSections()
@@ -179,7 +179,7 @@ public sealed class PluginTests
             var section = text[start..(end < 0 ? text.Length : end)];
             Assert.Contains("trademark", section);
             var outside = (text[..start] + text[(end < 0 ? text.Length : end)..]).Split('\n')
-                .Where(l => OldName.IsMatch(l) && !l.Contains("**Once, when updating from the app's old name**")).ToList();
+                .Where(l => OldName.IsMatch(l)).ToList();
             Assert.True(outside.Count == 0, Path.GetRelativePath(Repo, readme) + ": " + string.Join(" | ", outside));
         }
     }

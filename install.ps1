@@ -17,15 +17,18 @@
   Without -Interactive it stops with a message if Stowdeck is running, and changes nothing else.
 
   Stowdeck used to be called SessionKeeper. When updating from it, this script also:
-  - offers (with -Interactive) to close a running SessionKeeper; otherwise it carries on and says so,
-  - replaces SessionKeeper's "Start with Windows" entry with Stowdeck's, only if it was on,
+  - offers (with -Interactive) to close a running SessionKeeper and its MCP connectors; otherwise it carries on and
+    says so (the app then moves the old settings once SessionKeeper is closed),
+  - replaces SessionKeeper's "Start with Windows" entry with Stowdeck's, only if it was on (not turned off in
+    Task Manager); an entry that was off is removed without adding one,
   - removes SessionKeeper's Start menu shortcut, if it points at a SessionKeeper.exe,
   - removes the old skill copy in <Claude config dir>\skills\session-keeper (its SKILL.md and sessionkeeper.ps1),
     unless -NoSkill is used, in which case it only says it's there,
   - reports, but never deletes, the old app folder %LOCALAPPDATA%\Programs\SessionKeeper.
   The app's first run copies %APPDATA%\SessionKeeper to %APPDATA%\Stowdeck and keeps the original as a backup.
 
-  "Start with Windows" is never turned on here; tick it in the app's Settings if you want it.
+  "Start with Windows" is never turned on here, except to carry over SessionKeeper's entry as described above;
+  otherwise tick it in the app's Settings if you want it.
   Installing under Program Files is refused: it needs admin rights, and updates would fail.
   Requires the .NET 8 SDK (dotnet) to build. Stops at the first error.
 
@@ -154,27 +157,44 @@ if ($connectors.Count -gt 0) {
 }
 
 # ---------------------------------------------------------------- the app's old name
-# Stowdeck used to be called SessionKeeper. A running SessionKeeper doesn't lock these files, but it keeps the old
-# settings folder open, and its tray icon would sit next to Stowdeck's, so offer to close it before the first run.
-$oldRunning = @(Get-Process SessionKeeper -ErrorAction SilentlyContinue)
+# Stowdeck used to be called SessionKeeper. While SessionKeeper (its window, or an MCP connector Claude started) still
+# runs, it keeps writing to the old settings folder, so the app puts off moving that folder. Offer to close it first.
+# Only processes of the old app count: the name alone isn't enough, since another company's product shares it.
+function Get-OldAppProcesses {
+    @(Get-CimInstance Win32_Process -Filter "Name = 'SessionKeeper.exe'" -ErrorAction SilentlyContinue | Where-Object {
+        $_.ExecutablePath -and (Test-Path -LiteralPath $_.ExecutablePath) -and
+        ((Get-Item -LiteralPath $_.ExecutablePath).VersionInfo | Where-Object { $_.ProductName -eq 'SessionKeeper' -and $_.Comments -eq 'See, save and reopen Claude Code sessions.' })
+    })
+}
+$oldRunning = Get-OldAppProcesses
 if ($oldRunning.Count -gt 0) {
-    Write-Host 'SessionKeeper (the old name of this app) is running.'
-    if ($Interactive -and (Ask 'Close it now? Stowdeck replaces it.')) {
+    $oldConnectors = @($oldRunning | Where-Object { $_.CommandLine -match '--mcp' })
+    $oldWindows = $oldRunning.Count - $oldConnectors.Count
+    if ($oldWindows -gt 0) { Write-Host 'SessionKeeper (the old name of this app) is running.' }
+    if ($oldConnectors.Count -gt 0) { Write-Host "$($oldConnectors.Count) SessionKeeper MCP connector(s) started by Claude Desktop or Claude Code are running." }
+    if ($Interactive -and (Ask 'Close them now? Stowdeck replaces them.')) {
+        # The old connectors' own stop signal, as its installer used; the window's exit signal; then CloseMainWindow.
+        $oldMcpStop = New-Object System.Threading.EventWaitHandle($false, [System.Threading.EventResetMode]::ManualReset, 'Local\SessionKeeper.McpStop')
+        [void]$oldMcpStop.Set()
         try {
             $signal = [System.Threading.EventWaitHandle]::OpenExisting('Local\SessionKeeper.Exit')
             [void]$signal.Set()
             $signal.Dispose()
         } catch { }
-        foreach ($p in $oldRunning) { try { if (-not $p.HasExited) { [void]$p.CloseMainWindow() } } catch { } }
+        foreach ($o in $oldRunning) { try { $p = Get-Process -Id $o.ProcessId -ErrorAction Stop; [void]$p.CloseMainWindow() } catch { } }
         $deadline = (Get-Date).AddSeconds(10)
-        while ((Get-Date) -lt $deadline -and @(Get-Process SessionKeeper -ErrorAction SilentlyContinue).Count -gt 0) { Start-Sleep -Milliseconds 300 }
-        if (@(Get-Process SessionKeeper -ErrorAction SilentlyContinue).Count -gt 0) {
+        while ((Get-Date) -lt $deadline -and (Get-OldAppProcesses).Count -gt 0) { Start-Sleep -Milliseconds 300 }
+        $oldMcpStop.Dispose()
+        if ((Get-OldAppProcesses).Count -gt 0) {
             Write-Host "SessionKeeper didn't close. The install carries on; close it yourself later (right-click its tray icon > Exit)."
         } else {
             Write-Host 'Closed SessionKeeper.'
         }
     } else {
         Write-Host 'The install carries on. Close SessionKeeper yourself when you can (right-click its tray icon > Exit).'
+    }
+    if ($oldConnectors.Count -gt 0) {
+        Write-Host 'Remove the old connector from Claude Desktop or Claude Code, or they start it again: see "The name" in the README.'
     }
     Write-Host ''
 }
@@ -228,11 +248,19 @@ if ((Test-Path -LiteralPath $moveNote) -and (Get-Item -LiteralPath $moveNote).La
     Write-Host "Moved your settings, session names and snapshots from SessionKeeper to $(Join-Path $env:APPDATA 'Stowdeck')."
     Write-Host "The old folder is kept as a backup: see $moveNote"
 }
-# SessionKeeper's Start with Windows entry now starts Stowdeck instead (only if it was on).
-$oldStartup = (Get-ItemProperty -Path $runKey -ErrorAction SilentlyContinue).PSObject.Properties | Where-Object Name -eq 'SessionKeeper'
+# SessionKeeper's Start with Windows entry now starts Stowdeck instead: only an entry that starts a SessionKeeper.exe,
+# and only if it was on. Task Manager records entries the user turned off under StartupApproved (odd first byte = off).
+$oldStartup = (Get-ItemProperty -Path $runKey -ErrorAction SilentlyContinue).PSObject.Properties |
+    Where-Object { $_.Name -eq 'SessionKeeper' -and ([string]$_.Value) -match 'SessionKeeper\.exe' }
 if ($oldStartup) {
+    $approvedKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run'
+    $oldState = (Get-ItemProperty -Path $approvedKey -ErrorAction SilentlyContinue).PSObject.Properties | Where-Object Name -eq 'SessionKeeper'
+    $oldWasOff = $oldState -and ($oldState.Value -is [byte[]]) -and ($oldState.Value.Length -gt 0) -and (($oldState.Value[0] -band 1) -eq 1)
     Remove-ItemProperty -Path $runKey -Name 'SessionKeeper'
-    if (-not (Get-StartupCommand)) {
+    if ($oldState) { Remove-ItemProperty -Path $approvedKey -Name 'SessionKeeper' -ErrorAction SilentlyContinue }
+    if ($oldWasOff) {
+        Write-Host 'Start with Windows: removed the old SessionKeeper entry, which was turned off.'
+    } elseif (-not (Get-StartupCommand)) {
         Set-ItemProperty -Path $runKey -Name 'Stowdeck' -Value ('"' + $exe + '" --startup') -Type String
         Write-Host 'Start with Windows: replaced the SessionKeeper entry, so it now starts Stowdeck.'
     } else {

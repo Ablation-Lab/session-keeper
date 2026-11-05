@@ -112,12 +112,16 @@ public static class Cli
         return args[++i];
     }
 
+    /// <summary>A line Program sets before Run (the move from the app's old name was put off or failed); goes to stderr.</summary>
+    public static string? StartupNotice { get; set; }
+
     public static int Run(string[] args)
     {
         // The MCP connector owns stdin/stdout (JSON-RPC only), so it's started before any other output is opened.
         if (args.Length == 1 && string.Equals(args[0], "--mcp", StringComparison.OrdinalIgnoreCase)) return McpServer.RunStdio();
         using var output = CliOutput.Open(error: false);
         using var errors = CliOutput.Open(error: true);
+        if (StartupNotice is { } notice) errors.WriteLine("Stowdeck: " + notice);
         CliOptions opts;
         try
         {

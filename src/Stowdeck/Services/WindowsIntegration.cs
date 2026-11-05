@@ -17,15 +17,21 @@ public sealed class WindowsIntegration
     public const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     public const string ValueName = "Stowdeck";
 
+    /// <summary>Where Task Manager's Startup apps page records entries the user turned off.</summary>
+    public const string StartupApprovedKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+
     private readonly string _runKeyPath;
     private readonly string _startMenuDir;
+    private readonly string _approvedKeyPath;
 
     /// <param name="runKeyPath">HKCU subkey; overridable so tests never touch the real Run key.</param>
     /// <param name="startMenuDir">Folder for the Start menu shortcut; overridable for tests.</param>
-    public WindowsIntegration(string? runKeyPath = null, string? startMenuDir = null)
+    /// <param name="approvedKeyPath">HKCU subkey for Task Manager's on/off state; overridable for tests.</param>
+    public WindowsIntegration(string? runKeyPath = null, string? startMenuDir = null, string? approvedKeyPath = null)
     {
         _runKeyPath = runKeyPath ?? RunKeyPath;
         _startMenuDir = startMenuDir ?? Environment.GetFolderPath(Environment.SpecialFolder.Programs);
+        _approvedKeyPath = approvedKeyPath ?? StartupApprovedKeyPath;
     }
 
     /// <summary>The running executable (the apphost .exe, not the .dll).</summary>
@@ -87,8 +93,9 @@ public sealed class WindowsIntegration
 
     /// <summary>
     /// Replaces SessionKeeper's Start with Windows value and Start menu shortcut with Stowdeck's, pointing at
-    /// <paramref name="exePath"/>. Each is moved over only if it exists, so nothing is turned on that wasn't on before.
-    /// The old shortcut is removed only when it points at a SessionKeeper.exe. Returns what was changed.
+    /// <paramref name="exePath"/>. Each is moved over only if it exists, so nothing is turned on that wasn't on before:
+    /// an old value the user turned off in Task Manager is removed without adding a new one. The old value is touched
+    /// only when it starts a SessionKeeper.exe, and the old shortcut only when it points at one. Returns what was changed.
     /// </summary>
     public List<string> TakeOverFromOldName(string exePath)
     {
@@ -96,13 +103,21 @@ public sealed class WindowsIntegration
         bool hadStartup;
         using (var key = Registry.CurrentUser.OpenSubKey(_runKeyPath, writable: true))
         {
-            hadStartup = key?.GetValue(LegacyValueName) is string;
+            hadStartup = key?.GetValue(LegacyValueName) is string command && command.Contains(LegacyExeName, StringComparison.OrdinalIgnoreCase);
             if (hadStartup) key!.DeleteValue(LegacyValueName, throwOnMissingValue: false);
+        }
+        bool turnedOff = false;
+        if (hadStartup)
+        {
+            using var approved = Registry.CurrentUser.OpenSubKey(_approvedKeyPath, writable: true);
+            // Task Manager stores 12 bytes per entry; an odd first byte means the user turned it off.
+            turnedOff = approved?.GetValue(LegacyValueName) is byte[] { Length: > 0 } state && (state[0] & 1) == 1;
+            approved?.DeleteValue(LegacyValueName, throwOnMissingValue: false);
         }
         if (hadStartup)
         {
-            done.Add("removed the old " + LegacyValueName + " Start with Windows entry");
-            if (!IsStartWithWindowsEnabled)
+            done.Add("removed the old " + LegacyValueName + " Start with Windows entry" + (turnedOff ? " (it was turned off)" : ""));
+            if (!turnedOff && !IsStartWithWindowsEnabled)
             {
                 SetStartWithWindows(true, exePath);
                 done.Add("Start with Windows now starts " + exePath);

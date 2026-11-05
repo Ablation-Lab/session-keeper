@@ -23,6 +23,8 @@ public sealed class SnapshotStore
     {
         Dir = dir
               ?? NonEmpty(Environment.GetEnvironmentVariable("STOWDECK_SNAPSHOTS"))
+              // The variable from before the app was renamed (SessionKeeper), so a custom folder is still found.
+              ?? NonEmpty(Environment.GetEnvironmentVariable("SESSIONKEEPER_SNAPSHOTS"))
               ?? Path.Combine(AppPaths.DataDir, "snapshots");
     }
 
