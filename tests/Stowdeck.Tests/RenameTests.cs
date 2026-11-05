@@ -74,6 +74,29 @@ public sealed class RenameTests : IDisposable
         Assert.True(Directory.Exists(Old)); // and the old folder is left alone
     }
 
+    /// <summary>The app writes its launch log even when a move failed or was skipped: that alone doesn't stop the move.</summary>
+    [Fact]
+    public void ANewFolderWithOnlyLogsAndCacheStillGetsTheMove()
+    {
+        MakeOldFolder();
+        Directory.CreateDirectory(Path.Combine(New, "logs"));
+        Directory.CreateDirectory(Path.Combine(New, "cache"));
+        File.WriteAllText(Path.Combine(New, "logs", "launches-2026-11-03.log"), "y");
+        File.WriteAllText(Path.Combine(New, "logs", "launches-2026-11-05.log"), "z");
+        File.WriteAllText(Path.Combine(New, "cache", "dotnet.json"), "{}");
+
+        var result = RenameMigration.MoveDataFolder(_root);
+
+        Assert.Equal(RenameMigration.Outcome.Moved, result.Outcome);
+        Assert.True(File.Exists(Path.Combine(New, "settings.json")));
+        Assert.Equal("xy", File.ReadAllText(Path.Combine(New, "logs", "launches-2026-11-03.log"))); // same day: appended
+        Assert.Equal("z", File.ReadAllText(Path.Combine(New, "logs", "launches-2026-11-05.log")));
+        Assert.False(Directory.Exists(New + ".before-move"));
+        Assert.False(Directory.Exists(New + ".moving"));
+        Assert.True(Directory.Exists(Path.Combine(_root, "SessionKeeper.backup")));
+        Assert.Equal(RenameMigration.Outcome.AlreadyMoved, RenameMigration.MoveDataFolder(_root).Outcome);
+    }
+
     [Fact]
     public void AnEarlierBackupIsNeverOverwritten()
     {
