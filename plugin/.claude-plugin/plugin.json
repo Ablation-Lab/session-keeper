@@ -8,6 +8,7 @@
   "repository": "https://github.com/Ablation-Lab/session-keeper",
   "license": "MIT",
   "icon": "./.claude-plugin/icon.png",
+  "documentationUrl": "https://github.com/Ablation-Lab/session-keeper/blob/main/plugin/README.md",
   "supportUrl": "https://github.com/Ablation-Lab/session-keeper/issues",
   "privacyPolicyUrl": "https://github.com/Ablation-Lab/session-keeper/blob/main/plugin/README.md#privacy",
   "keywords": ["sessions", "snapshots", "windows", "productivity"]
