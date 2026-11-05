@@ -374,7 +374,9 @@ It always lists sessions with `--no-messages`, so Claude sees titles, names, fol
 Copy-Item -Recurse -Force plugin\skills\session-keeper "$env:USERPROFILE\.claude\skills\"
 ```
 
-Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. Then start a new Claude Code session so it picks the skill up. The [plugin](#claude-code-plugin) includes the same skill.
+That gives you `~/.claude/skills/session-keeper/SKILL.md` (on Windows, `%USERPROFILE%\.claude\skills\session-keeper\SKILL.md`). Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. Claude Code picks the skill up without a restart (if the `skills` folder didn't exist when the session started, type `/reload-skills`). The [plugin](#claude-code-plugin) includes the same skill.
+
+**claude.ai:** the skill doesn't work there. It drives the SessionKeeper app on your Windows computer, and skills uploaded to claude.ai run in Anthropic's sandbox, which can't reach your computer. Use it in Claude Code, or use the [MCP connector](#mcp-connector-claude-desktop-and-claude-code) in Claude Desktop.
 
 ### Claude Code plugin
 
@@ -404,9 +406,10 @@ The listing commands leave out untitled sessions in temp folders (short throwawa
    ```text
    /plugin install session-keeper@session-keeper
    ```
+   On Claude Code 2.1.275 or later you can do steps 2 and 3 in one go: `/plugin install session-keeper --marketplace Ablation-Lab/session-keeper`.
 4. Start a new Claude Code session. Type `/session-keeper:` to see the commands.
 
-From a terminal, `claude plugin marketplace add <path or Ablation-Lab/session-keeper>` and `claude plugin install session-keeper@session-keeper` do the same. To update it later, pull the repository (or let the GitHub marketplace update), then run `/plugin marketplace update session-keeper`.
+From a terminal, `claude plugin marketplace add <path or Ablation-Lab/session-keeper>` and `claude plugin install session-keeper@session-keeper` do the same. To update it later, run `/plugin marketplace update session-keeper` (after pulling, if you added your local clone), then choose **Update now** for the plugin on the **Installed** tab of `/plugin`, or run `claude plugin update session-keeper@session-keeper` from a terminal. Auto-update is off by default for marketplaces other than Anthropic's; you can turn it on under `/plugin` > **Marketplaces**.
 
 The plugin includes the skill, so you don't need the copy `install.cmd` puts in `%USERPROFILE%\.claude\skills` as well. If you use the plugin, install the app with `install.cmd -NoSkill`, or delete that folder, so Claude Code doesn't see the skill twice.
 
@@ -556,3 +559,7 @@ To remove it: delete the entry from `claude_desktop_config.json`, or run `claude
 - Tools: a Studio or dev server running as administrator, or a Studio whose working folder can't be read and whose Remotion isn't in the project's `node_modules`, isn't recognised as running. A dev server started without `npm run dev` (for example `npx vite`, `pnpm dev` or `yarn dev`) isn't either. **GitHub** recognises `github.com` remotes only, not GitHub Enterprise or other hosts.
 - The uncommitted changes badge needs Git for Windows (`git.exe` on `PATH` or in its usual install folder). Without it, no badge is shown.
 - `claude.exe` is found in `%USERPROFILE%\.local\bin`, then on `PATH`, then as npm's `claude.cmd`. If none of these exist, the windows run `claude` and rely on `PATH`.
+
+## Licence
+
+[MIT](LICENSE). SessionKeeper is an unofficial community project from Ablation Lab. It isn't made, endorsed or supported by Anthropic.

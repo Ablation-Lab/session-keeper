@@ -5,5 +5,6 @@
   "author": { "name": "Ablation Lab" },
   "homepage": "https://github.com/Ablation-Lab/session-keeper",
   "repository": "https://github.com/Ablation-Lab/session-keeper",
+  "license": "MIT",
   "keywords": ["sessions", "snapshots", "windows", "productivity"]
 }

@@ -2,6 +2,8 @@
 name: session-keeper
 description: Open SessionKeeper and use it to list running or recent Claude Code sessions, list saved snapshots, and save a snapshot of the running sessions with an optional note (Windows). Use when the user asks to open or show SessionKeeper; list, show or check their running, open or active Claude Code sessions (or which ones are working, idle or waiting for input); list recent sessions from today or the last few days; save, snapshot or bookmark their open sessions (for example at the end of the day, "with the note X"); or list their saved snapshots. Restoring or reopening sessions is done in the app, not by this skill.
 argument-hint: '[open | list | recent [days] | snapshots | snapshot "note"]'
+license: MIT
+compatibility: Claude Code on Windows, with the SessionKeeper app installed (install.cmd in the repository). Doesn't work in claude.ai, which can't reach your computer.
 allowed-tools:
   - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" open)
   - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --list --no-messages)
