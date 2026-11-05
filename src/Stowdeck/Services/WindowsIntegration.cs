@@ -23,12 +23,16 @@ public sealed class WindowsIntegration
     private readonly string _runKeyPath;
     private readonly string _startMenuDir;
     private readonly string _approvedKeyPath;
+    private readonly Func<string?, bool> _isOldExe;
 
     /// <param name="runKeyPath">HKCU subkey; overridable so tests never touch the real Run key.</param>
     /// <param name="startMenuDir">Folder for the Start menu shortcut; overridable for tests.</param>
     /// <param name="approvedKeyPath">HKCU subkey for Task Manager's on/off state; overridable for tests.</param>
-    public WindowsIntegration(string? runKeyPath = null, string? startMenuDir = null, string? approvedKeyPath = null)
+    /// <param name="isOldExe">Tells the old app's exe apart from others; overridable for tests.</param>
+    public WindowsIntegration(string? runKeyPath = null, string? startMenuDir = null, string? approvedKeyPath = null,
+                              Func<string?, bool>? isOldExe = null)
     {
+        _isOldExe = isOldExe ?? RenameMigration.IsOldExe;
         _runKeyPath = runKeyPath ?? RunKeyPath;
         _startMenuDir = startMenuDir ?? Environment.GetFolderPath(Environment.SpecialFolder.Programs);
         _approvedKeyPath = approvedKeyPath ?? StartupApprovedKeyPath;
@@ -87,7 +91,6 @@ public sealed class WindowsIntegration
     /// <summary>The Start with Windows value and Start menu shortcut the app used before it was renamed.</summary>
     public const string LegacyValueName = RenameMigration.OldName;
     public const string LegacyShortcutName = RenameMigration.OldName + ".lnk";
-    private const string LegacyExeName = RenameMigration.OldName + ".exe";
 
     public string LegacyShortcutPath => Path.Combine(_startMenuDir, LegacyShortcutName);
 
@@ -95,7 +98,8 @@ public sealed class WindowsIntegration
     /// Replaces SessionKeeper's Start with Windows value and Start menu shortcut with Stowdeck's, pointing at
     /// <paramref name="exePath"/>. Each is moved over only if it exists, so nothing is turned on that wasn't on before:
     /// an old value the user turned off in Task Manager is removed without adding a new one. The old value is touched
-    /// only when it starts a SessionKeeper.exe, and the old shortcut only when it points at one. Returns what was changed.
+    /// only when it starts the old app's exe, and the old shortcut only when it points at it (checked by its version
+    /// details, as another company's product shares the name). Returns what was changed.
     /// </summary>
     public List<string> TakeOverFromOldName(string exePath)
     {
@@ -103,7 +107,7 @@ public sealed class WindowsIntegration
         bool hadStartup;
         using (var key = Registry.CurrentUser.OpenSubKey(_runKeyPath, writable: true))
         {
-            hadStartup = key?.GetValue(LegacyValueName) is string command && command.Contains(LegacyExeName, StringComparison.OrdinalIgnoreCase);
+            hadStartup = key?.GetValue(LegacyValueName) is string command && _isOldExe(ExeFromCommand(command));
             if (hadStartup) key!.DeleteValue(LegacyValueName, throwOnMissingValue: false);
         }
         bool turnedOff = false;
@@ -124,8 +128,7 @@ public sealed class WindowsIntegration
             }
         }
 
-        if (ReadShortcutTarget(LegacyShortcutPath) is { } target &&
-            string.Equals(Path.GetFileName(target), LegacyExeName, StringComparison.OrdinalIgnoreCase))
+        if (ReadShortcutTarget(LegacyShortcutPath) is { } target && _isOldExe(target))
         {
             File.Delete(LegacyShortcutPath);
             done.Add("removed the old Start menu shortcut " + LegacyShortcutName);
@@ -136,6 +139,19 @@ public sealed class WindowsIntegration
             }
         }
         return done;
+    }
+
+    /// <summary>The program a Run value starts: the quoted path at its start, or everything up to the first space.</summary>
+    internal static string ExeFromCommand(string command)
+    {
+        command = command.Trim();
+        if (command.StartsWith('"'))
+        {
+            var end = command.IndexOf('"', 1);
+            return end > 0 ? command[1..end] : command[1..];
+        }
+        var space = command.IndexOf(' ');
+        return space > 0 ? command[..space] : command;
     }
 
     /// <summary>Target path of an existing .lnk (used by tests and the settings window).</summary>

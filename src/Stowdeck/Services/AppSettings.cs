@@ -37,6 +37,10 @@ public sealed class AppSettings
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
+    /// <summary>The default settings as JSON, as Save writes them (used to merge settings from the app's old name).</summary>
+    internal static System.Text.Json.Nodes.JsonObject DefaultsAsJson() =>
+        JsonSerializer.SerializeToNode(new AppSettings(), Json)!.AsObject();
+
     public static string DefaultPath =>
         Path.Combine(AppPaths.DataDir, "settings.json");
 

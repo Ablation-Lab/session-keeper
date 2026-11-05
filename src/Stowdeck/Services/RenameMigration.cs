@@ -71,6 +71,10 @@ public static class RenameMigration
                 var keptNew = new List<string>();
                 var links = new List<string>();
                 MergeTree(oldDir, newDir, "", keptNew, links);
+                // If the old app started meanwhile, it may have saved something after its file was copied: leave the
+                // old folder in place and finish next time (what's copied stays, and the rest is merged in then).
+                if (oldAppRunning?.Invoke() == true)
+                    return new Result(Outcome.Deferred, "put off: SessionKeeper started while " + oldDir + " was being copied");
 
                 var stamp = now ?? DateTime.Now;
                 var backup = Path.Combine(appData, BackupFolderName);
@@ -191,7 +195,9 @@ public static class RenameMigration
             var dest = Path.Combine(to, name);
             if (File.Exists(dest))
             {
-                // Stowdeck's own copy wins; the old one stays in the backup. Logs and cache aren't worth mentioning.
+                // Saved in Stowdeck while the move waited: session names and settings are merged, so neither is lost.
+                if (rel.Length == 0 && TryMergeJson(file, dest, name)) continue;
+                // Otherwise Stowdeck's own copy wins; the old one stays in the backup. Logs and cache aren't worth mentioning.
                 var relPath = Path.Combine(rel, name);
                 if (!(rel.StartsWith("logs", StringComparison.OrdinalIgnoreCase) || rel.StartsWith("cache", StringComparison.OrdinalIgnoreCase)))
                     keptNew.Add(relPath);
@@ -211,6 +217,40 @@ public static class RenameMigration
                 continue;
             }
             MergeTree(dir, Path.Combine(to, name), Path.Combine(rel, name), keptNew, links);
+        }
+    }
+
+    /// <summary>
+    /// Merges the old nicknames.json or settings.json into Stowdeck's copy of it. Session names: all of both, Stowdeck's
+    /// name winning for a session named in both. Settings: the old ones, with any setting Stowdeck changed from its
+    /// default on top. False (Stowdeck's copy is kept as it is) for other files or a file that isn't a JSON object.
+    /// </summary>
+    internal static bool TryMergeJson(string oldFile, string newFile, string name)
+    {
+        bool settings = name.Equals("settings.json", StringComparison.OrdinalIgnoreCase);
+        if (!settings && !name.Equals("nicknames.json", StringComparison.OrdinalIgnoreCase)) return false;
+        try
+        {
+            if (System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(oldFile)) is not System.Text.Json.Nodes.JsonObject merged
+                || System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(newFile)) is not System.Text.Json.Nodes.JsonObject current)
+                return false;
+            var defaults = settings ? AppSettings.DefaultsAsJson() : null;
+            foreach (var (key, value) in current.ToList())
+            {
+                if (defaults != null && defaults.TryGetPropertyValue(key, out var def)
+                    && System.Text.Json.Nodes.JsonNode.DeepEquals(def, value) && merged.ContainsKey(key))
+                    continue; // left at the default in Stowdeck: the old setting stands
+                merged[key] = value?.DeepClone();
+            }
+            var temp = newFile + ".moving";
+            File.WriteAllText(temp, merged.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }),
+                new System.Text.UTF8Encoding(false));
+            File.Move(temp, newFile, overwrite: true);
+            return true;
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException)
+        {
+            return false;
         }
     }
 

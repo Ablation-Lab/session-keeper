@@ -49,7 +49,8 @@ public static class Program
             return 0;
         }
 
-        ReportMove(moved);
+        // At sign-in (--startup) nothing pops up: the move is just tried again on the next start.
+        if (!startInTray) ReportMove(moved);
         var app = new App { StartInTray = startInTray };
         app.InitializeComponent();
         return app.Run();

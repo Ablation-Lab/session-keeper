@@ -21,7 +21,7 @@
     says so (the app then moves the old settings once SessionKeeper is closed),
   - replaces SessionKeeper's "Start with Windows" entry with Stowdeck's, only if it was on (not turned off in
     Task Manager); an entry that was off is removed without adding one,
-  - removes SessionKeeper's Start menu shortcut, if it points at a SessionKeeper.exe,
+  - removes SessionKeeper's Start menu shortcut, if it points at SessionKeeper's exe,
   - removes the old skill copy in <Claude config dir>\skills\session-keeper (its SKILL.md and sessionkeeper.ps1),
     unless -NoSkill is used, in which case it only says it's there,
   - reports, but never deletes, the old app folder %LOCALAPPDATA%\Programs\SessionKeeper.
@@ -160,11 +160,13 @@ if ($connectors.Count -gt 0) {
 # Stowdeck used to be called SessionKeeper. While SessionKeeper (its window, or an MCP connector Claude started) still
 # runs, it keeps writing to the old settings folder, so the app puts off moving that folder. Offer to close it first.
 # Only processes of the old app count: the name alone isn't enough, since another company's product shares it.
+function Test-OldExe([string]$Path) {
+    if (-not $Path -or [System.IO.Path]::GetFileName($Path) -ne 'SessionKeeper.exe' -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    $info = (Get-Item -LiteralPath $Path).VersionInfo
+    return ($info.ProductName -eq 'SessionKeeper' -and $info.Comments -eq 'See, save and reopen Claude Code sessions.')
+}
 function Get-OldAppProcesses {
-    @(Get-CimInstance Win32_Process -Filter "Name = 'SessionKeeper.exe'" -ErrorAction SilentlyContinue | Where-Object {
-        $_.ExecutablePath -and (Test-Path -LiteralPath $_.ExecutablePath) -and
-        ((Get-Item -LiteralPath $_.ExecutablePath).VersionInfo | Where-Object { $_.ProductName -eq 'SessionKeeper' -and $_.Comments -eq 'See, save and reopen Claude Code sessions.' })
-    })
+    @(Get-CimInstance Win32_Process -Filter "Name = 'SessionKeeper.exe'" -ErrorAction SilentlyContinue | Where-Object { Test-OldExe $_.ExecutablePath })
 }
 $oldRunning = Get-OldAppProcesses
 if ($oldRunning.Count -gt 0) {
@@ -248,10 +250,10 @@ if ((Test-Path -LiteralPath $moveNote) -and (Get-Item -LiteralPath $moveNote).La
     Write-Host "Moved your settings, session names and snapshots from SessionKeeper to $(Join-Path $env:APPDATA 'Stowdeck')."
     Write-Host "The old folder is kept as a backup: see $moveNote"
 }
-# SessionKeeper's Start with Windows entry now starts Stowdeck instead: only an entry that starts a SessionKeeper.exe,
+# SessionKeeper's Start with Windows entry now starts Stowdeck instead: only an entry that starts the old app's exe,
 # and only if it was on. Task Manager records entries the user turned off under StartupApproved (odd first byte = off).
 $oldStartup = (Get-ItemProperty -Path $runKey -ErrorAction SilentlyContinue).PSObject.Properties |
-    Where-Object { $_.Name -eq 'SessionKeeper' -and ([string]$_.Value) -match 'SessionKeeper\.exe' }
+    Where-Object { $_.Name -eq 'SessionKeeper' -and (Test-OldExe ($(if (([string]$_.Value).Trim() -match '^"([^"]+)"') { $Matches[1] } else { (([string]$_.Value).Trim() -split ' ')[0] }))) }
 if ($oldStartup) {
     $approvedKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run'
     $oldState = (Get-ItemProperty -Path $approvedKey -ErrorAction SilentlyContinue).PSObject.Properties | Where-Object Name -eq 'SessionKeeper'
@@ -267,13 +269,13 @@ if ($oldStartup) {
         Write-Host 'Start with Windows: removed the old SessionKeeper entry.'
     }
 }
-# SessionKeeper's Start menu shortcut, if it still points at a SessionKeeper.exe.
+# SessionKeeper's Start menu shortcut, if it still points at the old app's exe.
 $oldShortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'SessionKeeper.lnk'
 if (Test-Path -LiteralPath $oldShortcut) {
     $shell = New-Object -ComObject WScript.Shell
     $oldTarget = $shell.CreateShortcut($oldShortcut).TargetPath
     [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
-    if ([System.IO.Path]::GetFileName($oldTarget) -ieq 'SessionKeeper.exe') {
+    if (Test-OldExe $oldTarget) {
         Remove-Item -LiteralPath $oldShortcut
         Write-Host 'Start menu: removed the old SessionKeeper shortcut.'
     }
