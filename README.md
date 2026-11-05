@@ -1,7 +1,5 @@
 A small Windows app (C# / .NET 8 WPF) that shows which Claude Code sessions are running, saves them as named snapshots, and reopens them later, each in its own PowerShell window or Windows Terminal tab, resuming the same conversation. It can also save and reopen your other terminal sessions, such as other CLI agents, dev servers and plain shells.
 
-<img width="899" height="531" alt="SessionKeeper-recent_1" src="https://github.com/user-attachments/assets/5a3119f2-232b-4083-a0b0-90703d6def58" />
-
 ## What it does
 
 | Feature | What you get | Where |
