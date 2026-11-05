@@ -11,7 +11,8 @@ namespace SessionKeeper.Services;
 
 public sealed class CliUsageException(string message) : Exception(message);
 
-public sealed record CliOptions(string Command, string? Note = null, string? Name = null, int Days = 1, bool Json = false, bool NoMessages = false);
+public sealed record CliOptions(string Command, string? Note = null, string? Name = null, int Days = 1, bool Json = false, bool NoMessages = false,
+                                bool HideTemp = false);
 
 /// <summary>
 /// Headless command-line mode. Read-only except --snapshot (writes one file to the snapshots folder) and
@@ -27,9 +28,9 @@ public static class Cli
 
         Usage:
           SessionKeeper.exe                         open the app (brings an open window to the front)
-          SessionKeeper.exe --list [--json] [--no-messages]
+          SessionKeeper.exe --list [--json] [--no-messages] [--hide-temp]
                                                     list running Claude Code sessions
-          SessionKeeper.exe --recent [--days N] [--json] [--no-messages]
+          SessionKeeper.exe --recent [--days N] [--json] [--no-messages] [--hide-temp]
                                                     list sessions active in the last N days (default 1)
           SessionKeeper.exe --snapshots [--json]    list saved snapshots
           SessionKeeper.exe --snapshot ["note"] [--name "name"] [--json]
@@ -39,6 +40,7 @@ public static class Cli
           SessionKeeper.exe --help | --version
 
         --no-messages leaves out the first and last messages, showing only titles, folders, times and IDs.
+        --hide-temp leaves out untitled sessions in temp folders (short throwaway runs) and says how many.
 
         Exit codes: 0 ok, 1 nothing to do or error, 2 usage error.
         In PowerShell, pipe the output (e.g. "| Out-Host") so the shell waits for it.
@@ -62,7 +64,7 @@ public static class Cli
     {
         string? command = null, note = null, name = null;
         int days = 1;
-        bool json = false, noMessages = false;
+        bool json = false, noMessages = false, hideTemp = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -83,6 +85,7 @@ public static class Cli
             {
                 case "--json": json = true; break;
                 case "--no-messages": noMessages = true; break;
+                case "--hide-temp": hideTemp = true; break;
                 case "--note": note = Value(args, ref i, a); break;
                 case "--name": name = Value(args, ref i, a); break;
                 case "--days":
@@ -98,8 +101,9 @@ public static class Cli
         if ((note != null || name != null) && command != "--snapshot") throw new CliUsageException("--note and --name only apply to --snapshot.");
         if (name != null && string.IsNullOrWhiteSpace(name)) throw new CliUsageException("--name can't be empty.");
         if (noMessages && command is not ("--list" or "--recent")) throw new CliUsageException("--no-messages only applies to --list and --recent.");
+        if (hideTemp && command is not ("--list" or "--recent")) throw new CliUsageException("--hide-temp only applies to --list and --recent.");
         if (command == "--mcp" && (json || days != 1)) throw new CliUsageException("--mcp takes no other options.");
-        return new CliOptions(command, note, name?.Trim(), days, json, noMessages);
+        return new CliOptions(command, note, name?.Trim(), days, json, noMessages, hideTemp);
     }
 
     private static string Value(string[] args, ref int i, string flag)
@@ -161,6 +165,13 @@ public static class Cli
     {
         var running = SessionQueries.GetRunning(new RunningScanner(), new SessionStore());
         var names = new NicknameStore();
+        int hidden = 0;
+        if (o.HideTemp)
+        {
+            var shown = running.Where(e => !IsThrowaway(e.Running.Name ?? e.Info?.Title, names.Get(e.Running.SessionId), e.ProjectDir)).ToList();
+            hidden = running.Count - shown.Count;
+            running = shown;
+        }
         if (o.Json)
         {
             w.WriteLine(JsonSerializer.Serialize(running.Select(e => new
@@ -178,7 +189,7 @@ public static class Cli
             return 0;
         }
 
-        if (running.Count == 0) return Write(w, "No Claude Code sessions are running.", 0);
+        if (running.Count == 0) return Write(w, "No Claude Code sessions are running." + HiddenNote(hidden), 0);
         var counts = running.GroupBy(e => StatusText(e.Running)).Select(g => $"{g.Count()} {g.Key}");
         w.WriteLine($"{running.Count} Claude Code session{(running.Count == 1 ? "" : "s")} running ({string.Join(", ", counts)})");
         foreach (var e in running)
@@ -191,8 +202,16 @@ public static class Cli
             w.WriteLine($"  {"",-12} {e.ProjectDir ?? "(folder unknown)"}  ·  " +
                         (e.Running.SessionId != null ? "session " + e.Running.SessionId : "no session id") + $"  ·  PID {e.Running.Pid}");
         }
+        if (hidden > 0) { w.WriteLine(); w.WriteLine(HiddenNote(hidden).TrimStart()); }
         return 0;
     }
+
+    /// <summary>An untitled, unnamed session in a temp folder: usually a short throwaway run from a script or tool.</summary>
+    internal static bool IsThrowaway(string? title, string? nickname, string? folder) =>
+        string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(nickname) && TempFolders.Contains(folder);
+
+    private static string HiddenNote(int hidden) => hidden == 0 ? "" :
+        $" ({hidden} untitled session{(hidden == 1 ? "" : "s")} in temp folders hidden.)";
 
     internal static int Recent(TextWriter w, CliOptions o)
     {
@@ -201,6 +220,13 @@ public static class Cli
         var running = new RunningScanner().Scan().Where(r => r.SessionId != null).Select(r => r.SessionId!)
                                               .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var names = new NicknameStore();
+        int hidden = 0;
+        if (o.HideTemp)
+        {
+            var shown = recent.Where(s => !IsThrowaway(s.Title, names.Get(s.SessionId), s.ProjectDir)).ToList();
+            hidden = recent.Count - shown.Count;
+            recent = shown;
+        }
         if (o.Json)
         {
             w.WriteLine(JsonSerializer.Serialize(recent.Select(s => new
@@ -217,7 +243,7 @@ public static class Cli
             return 0;
         }
 
-        if (recent.Count == 0) return Write(w, $"No sessions in the last {o.Days} day{(o.Days == 1 ? "" : "s")}.", 0);
+        if (recent.Count == 0) return Write(w, $"No sessions in the last {o.Days} day{(o.Days == 1 ? "" : "s")}." + HiddenNote(hidden), 0);
         w.WriteLine($"{recent.Count} session{(recent.Count == 1 ? "" : "s")} in the last {o.Days} day{(o.Days == 1 ? "" : "s")}:");
         foreach (var s in recent)
         {
@@ -228,6 +254,7 @@ public static class Cli
             if (!o.NoMessages && (s.LastPrompt ?? s.FirstPrompt) is { } lp) w.WriteLine($"  {"",-16} last: {Fmt.Trim(lp, 100)}");
             w.WriteLine($"  {"",-16} {s.ProjectDir}  ·  session {s.SessionId}");
         }
+        if (hidden > 0) { w.WriteLine(); w.WriteLine(HiddenNote(hidden).TrimStart()); }
         return 0;
     }
 

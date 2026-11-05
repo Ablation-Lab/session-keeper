@@ -71,7 +71,7 @@ Open **SessionKeeper** from the Start menu. The window has four tabs at the top,
    - **Bold label:** your name for the session if you've given it one (see [Naming sessions](#naming-sessions)). Otherwise it's the session's own title, or the folder name if that title is missing or generic (such as "Continuing previous session").
    - **Grey text on the right:** the project folder. Hover over it for the full path.
    - **Second line:** the last message you sent in that session.
-   - **Right-hand side:** how long ago the session was active, and its status: *working*, *needs input* (waiting for you, for example at a permission prompt), *idle*, *starting* (just launched) or *unmatched*. Rarely, it's *unknown* or another word: a status Claude Code reported that SessionKeeper doesn't recognise, shown as reported.
+   - **Right-hand side:** how long ago the session was active, and its status: *working*, *needs input* (waiting for you, for example at a permission prompt), *idle*, *shell* (running a background shell command, such as a dev server), *starting* (just launched) or *unmatched*. Rarely, it's *unknown* or another word: a status Claude Code reported that SessionKeeper doesn't recognise, shown as reported.
 3. An *unmatched* row is a `claude` process that isn't in Claude Code's session registry, for example one sitting at the "trust this folder" prompt. It's shown so nothing is hidden, but it has no session ID, so it can't be opened or saved as a resumable session.
 4. The list refreshes itself every 10 seconds while this tab is showing and the window isn't minimised. Click **Refresh** to update it straight away. The summary at the top right, such as "6 running · 1 working", shows when it last updated.
 5. To open a session from here, see [Opening a session](#opening-a-session). Every session on this tab is already running, so you'll always be asked before a second copy opens.
@@ -336,8 +336,8 @@ Each part has its own colour, so you can tell which one is out of date. Both che
 The same exe has command-line options. It never opens the window when you use them:
 
 ```text
-SessionKeeper.exe --list [--json] [--no-messages]         running sessions
-SessionKeeper.exe --recent [--days N] [--json] [--no-messages]   sessions active in the last N days (default 1)
+SessionKeeper.exe --list [--json] [--no-messages] [--hide-temp]   running sessions
+SessionKeeper.exe --recent [--days N] [--json] [--no-messages] [--hide-temp]   sessions active in the last N days (default 1)
 SessionKeeper.exe --snapshots [--json]                    saved snapshots (with how many terminals each has)
 SessionKeeper.exe --snapshot ["note"] [--name "name"] [--json]   save the running sessions
 SessionKeeper.exe --install-shortcut                      add the Start menu shortcut
@@ -346,6 +346,7 @@ SessionKeeper.exe --help | --version
 ```
 
 - `--no-messages` leaves out each session's first and last messages, so the output has only titles, names, folders, times, statuses and session IDs. The skill, the plugin and the MCP connector always use it.
+- `--hide-temp` leaves out untitled sessions in temp folders (your Windows temp folders and anything in them, or any folder named `Temp` or `tmp`), which are usually short throwaway runs from scripts and tools, and ends with a line saying how many were hidden. A session with a title or a name you gave it is always listed. The skill, the plugin and the MCP connector use it unless you ask for all sessions. The app's own lists always show everything.
 
 - `--snapshot` uses the same rules as the Save dialog. Matched sessions are saved, and unmatched or still-starting processes are skipped and listed.
 - Exit codes: 0 means OK, 1 means nothing to do or an error, and 2 means a usage error.
@@ -365,7 +366,7 @@ It runs the command-line options above through `sessionkeeper.ps1`, which finds 
 2. `%LOCALAPPDATA%\Programs\SessionKeeper\SessionKeeper.exe`.
 3. `PATH`.
 
-It always lists sessions with `--no-messages`, so Claude sees titles, names, folders and times, not what was said. Restoring sessions stays in the app, because that opens new windows. The skill only pre-approves the read-only commands (`open`, `--list`, `--recent`, `--snapshots`, `--help`, `--version`), so Claude Code asks you before it saves a snapshot or adds the Start menu shortcut.
+It always lists sessions with `--no-messages`, so Claude sees titles, names, folders and times, not what was said. It also uses `--hide-temp` unless you ask for all sessions (or for throwaway or temp-folder ones). Restoring sessions stays in the app, because that opens new windows. The skill only pre-approves the read-only commands (`open`, `--list`, `--recent`, `--snapshots`, `--help`, `--version`), so Claude Code asks you before it saves a snapshot or adds the Start menu shortcut.
 
 `install.cmd` installs the skill for you. To install it by hand, copy the folder:
 
@@ -381,14 +382,16 @@ The `plugin` folder is a Claude Code plugin. It bundles the [skill](#claude-code
 
 | Command | What it does |
 |---|---|
-| `/session-keeper:running` | Lists the Claude Code sessions running now, with their status. |
-| `/session-keeper:recent [days]` | Lists sessions from today, or from the last N days (1 to 365). |
+| `/session-keeper:running [all]` | Lists the Claude Code sessions running now, with their status. |
+| `/session-keeper:recent [days] [all]` | Lists sessions from today, or from the last N days (1 to 365). |
 | `/session-keeper:snapshots` | Lists your saved snapshots. |
 | `/session-keeper:snapshot [note]` | Saves the running sessions as a snapshot, with an optional note. |
 | `/session-keeper:open` | Opens the SessionKeeper window. |
 
+The listing commands leave out untitled sessions in temp folders (short throwaway runs) and say how many they hid. Add `all` to include them, for example `/session-keeper:recent 3 all`.
+
 **Install the plugin**
-1. Install SessionKeeper 1.10.0 or later with `install.cmd` (see [Install / Update](#install--update)). The plugin uses the app's `--no-messages` option, which earlier versions don't have.
+1. Install SessionKeeper 1.10.1 or later with `install.cmd` (see [Install / Update](#install--update)). The plugin uses the app's `--no-messages` and `--hide-temp` options, which earlier versions don't have.
 2. In Claude Code, add the marketplace. From your clone:
    ```text
    /plugin marketplace add C:\path\to\session-keeper
@@ -410,8 +413,9 @@ The plugin includes the skill, so you don't need the copy `install.cmd` puts in 
 **Use the plugin**
 1. In any Claude Code session, type `/session-keeper:running`. Claude runs SessionKeeper and replies with one line per running session: folder, name or title, status, and when it was last active.
 2. Type `/session-keeper:recent 3` to see what you worked on in the last three days.
-3. At the end of the day, type `/session-keeper:snapshot waiting on review` to save your running sessions with that note.
-4. Later, type `/session-keeper:open` and restore the snapshot from the **Snapshots** tab.
+3. If the reply says untitled sessions in temp folders were hidden, type `/session-keeper:recent 3 all` to see them too.
+4. At the end of the day, type `/session-keeper:snapshot waiting on review` to save your running sessions with that note.
+5. Later, type `/session-keeper:open` and restore the snapshot from the **Snapshots** tab.
 
 You can also just ask, as with the skill: "which sessions are waiting for me?" or "save my sessions with the note end of day".
 
@@ -420,6 +424,7 @@ You can also just ask, as with the skill: "which sessions are waiting for me?" o
 - `/session-keeper:snapshot` and `/session-keeper:open` run only when you type them. Claude can't run them on its own.
 - A snapshot note is passed as one single-quoted argument. The command tells Claude to change any apostrophes in it to ʼ (which no shell treats as a quote), straight double quotes to ”, and line breaks to spaces first, so a note can't end the quotes and add options or commands, in Bash or PowerShell.
 - Results show titles, names, folders, times, statuses and session IDs, never what was said in a conversation. The listing commands use `--no-messages`.
+- Every command file and the skill list the same five commands, and say that `snapshot` and `open` exist even though Claude can't run them itself.
 
 ### MCP connector (Claude Desktop and Claude Code)
 
@@ -427,17 +432,17 @@ You can also just ask, as with the skill: "which sessions are waiting for me?" o
 
 | Tool | What it does | Changes anything? |
 |---|---|---|
-| `list_running_sessions` | The Claude Code sessions running now: status, folder, last active, name or title, session ID. | No |
-| `list_recent_sessions` | Sessions from the last N days (1 to 365, default 1), newest first, and whether each is running. | No |
+| `list_running_sessions` | The Claude Code sessions running now: status, folder, last active, name or title, session ID. Optional `include_temp`. | No |
+| `list_recent_sessions` | Sessions from the last N days (1 to 365, default 1), newest first, and whether each is running. Optional `include_temp`. | No |
 | `list_snapshots` | Saved snapshots: name, date, how many sessions and terminals, note. | No |
 | `save_snapshot` | Saves the running sessions as a snapshot, with an optional name and note. | Writes one snapshot file |
 | `open_app` | Opens the SessionKeeper window (an open one comes to the front). | Opens a window |
 | `open_session` | Resumes one session, by its session ID, in a new PowerShell window or Windows Terminal tab. | Opens a window |
 
-Results are plain text with titles, names, folders, times, statuses and session IDs, never what was said in a conversation.
+Results are plain text with titles, names, folders, times, statuses and session IDs, never what was said in a conversation. The two list tools leave out untitled sessions in temp folders (short throwaway runs) and say how many they hid, unless `include_temp` is true.
 
 **Install it in Claude Desktop**
-1. Install SessionKeeper 1.10.0 or later with `install.cmd`.
+1. Install SessionKeeper 1.10.1 or later with `install.cmd`.
 2. In Claude Desktop, open **Settings** > **Developer** > **Edit Config**. This opens `%APPDATA%\Claude\claude_desktop_config.json` (create it if it doesn't exist).
 3. Add SessionKeeper under `mcpServers`, with your user name in the path. If the file already has other servers, add this entry next to them:
    ```json
@@ -453,7 +458,7 @@ Results are plain text with titles, names, folders, times, statuses and session 
 4. Save the file and restart Claude Desktop. **sessionkeeper** then appears in the connectors (tools) menu of a new chat.
 
 **Install it in Claude Code**
-1. Install SessionKeeper 1.10.0 or later with `install.cmd`.
+1. Install SessionKeeper 1.10.1 or later with `install.cmd`.
 2. In PowerShell, add it for all your projects:
    ```powershell
    claude mcp add --scope user sessionkeeper -- "$env:LOCALAPPDATA\Programs\SessionKeeper\SessionKeeper.exe" --mcp
@@ -466,7 +471,7 @@ To remove it: delete the entry from `claude_desktop_config.json`, or run `claude
 
 **Use the connector**
 1. In a new chat, ask "Which Claude Code sessions are running?" Claude calls `list_running_sessions` and summarises the result.
-2. Ask "What did I work on in the last 3 days?" for `list_recent_sessions`.
+2. Ask "What did I work on in the last 3 days?" for `list_recent_sessions`. Add "including the throwaway temp ones" to see untitled temp-folder sessions too.
 3. Ask "Save my sessions as a snapshot with the note waiting on review". Claude asks your permission to use `save_snapshot`, then confirms what was saved.
 4. Ask "Open the session about the release notes". Claude finds its session ID with `list_recent_sessions`, asks your permission for `open_session`, and the session opens in a new window in its own folder.
 5. Ask "Open SessionKeeper" for `open_app`, then restore a whole snapshot from the **Snapshots** tab.

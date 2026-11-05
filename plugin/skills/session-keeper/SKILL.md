@@ -44,8 +44,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/session
 | The user asks to… | Options |
 |---|---|
 | open / show SessionKeeper | `open` (returns straight away; an open window comes to the front) |
-| list running sessions, see what's working or waiting | `--list --no-messages` |
-| list recent sessions (today, last N days) | `--recent --no-messages` or `--recent --no-messages --days N` |
+| list running sessions, see what's working or waiting | `--list --no-messages --hide-temp` |
+| list recent sessions (today, last N days) | `--recent --no-messages --hide-temp` or `--recent --no-messages --hide-temp --days N` |
 | list saved snapshots | `--snapshots` |
 | save a snapshot of the open sessions | `--snapshot` |
 | …with a note | `--snapshot "the note"` |
@@ -53,6 +53,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/session
 
 Always include `--no-messages` with `--list` and `--recent`: it leaves out what was said in each conversation
 (first and last messages), so results give titles, names, folders, times, statuses and session IDs only.
+
+Include `--hide-temp` too, unless the user asks for all sessions or for throwaway, untitled or temp-folder ones. It
+leaves out untitled sessions in temp folders (short throwaway runs from scripts and tools) and ends with a line
+saying how many were hidden: pass that on in one line, and offer to list them.
 
 Add `--json` to `--list`, `--recent`, `--snapshots` or `--snapshot` when you need to process the results
 (for example to count sessions or filter by folder) rather than show them.
@@ -67,7 +71,8 @@ double quote (") with ” (Windows PowerShell mishandles those when passing argu
 - **Exit codes:** 0 means OK; 1 means nothing to do (for example no matched sessions to snapshot) or an
   error, with the reason on stderr; 2 means a usage error; 3 means SessionKeeper isn't installed.
 - **Statuses:** *working* (busy), *needs input* (waiting on the user, for example a permission prompt),
-  *idle*, *starting* (just launched), *unmatched* (a claude process that isn't in Claude Code's
+  *idle* (waiting for the user's next message), *shell* (running a background shell command, such as a dev
+  server), *starting* (just launched), *unmatched* (a claude process that isn't in Claude Code's
   session registry, so it can't be resumed by ID) and, rarely, *unknown* or another word: a status Claude
   Code reported that SessionKeeper doesn't recognise (shown as reported).
 - The list includes the session you're running in.
@@ -92,6 +97,18 @@ they're needed to tell sessions apart.
   commands after the user confirms them, so the user does it in the app (Snapshots tab → Restore, or Recent
   tab → Reopen selected). Offer to `open` the app.
 - **Rename or delete snapshots.** Those are also done in the app.
+
+## SessionKeeper's commands
+
+When this skill comes with the SessionKeeper plugin, the plugin has these five commands. `/session-keeper:snapshot`
+and `/session-keeper:open` run only when the user types them, so they may be missing from your own list of
+commands, but they exist: suggest them by name, and never say they don't exist.
+
+- `/session-keeper:running [all]` lists running sessions.
+- `/session-keeper:recent [days] [all]` lists recent sessions.
+- `/session-keeper:snapshots` lists saved snapshots.
+- `/session-keeper:snapshot [note]` saves the running sessions as a snapshot.
+- `/session-keeper:open` opens the app.
 
 ## If SessionKeeper isn't installed (exit code 3)
 

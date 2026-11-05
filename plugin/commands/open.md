@@ -13,3 +13,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/skill
 ```
 
 Then confirm in one line. If the exit code is 3, SessionKeeper isn't installed: tell me to double-click `install.cmd` in the SessionKeeper repository.
+
+## SessionKeeper's commands
+
+The SessionKeeper plugin has these five commands. `/session-keeper:snapshot` and `/session-keeper:open` run only when I type them, so they may be missing from your own list of commands, but they exist: suggest them by name, and never say they don't exist.
+
+- `/session-keeper:running [all]` lists running sessions.
+- `/session-keeper:recent [days] [all]` lists recent sessions.
+- `/session-keeper:snapshots` lists saved snapshots.
+- `/session-keeper:snapshot [note]` saves the running sessions as a snapshot.
+- `/session-keeper:open` opens the app.

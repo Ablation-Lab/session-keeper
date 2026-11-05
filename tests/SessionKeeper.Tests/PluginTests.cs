@@ -95,6 +95,57 @@ public sealed class PluginTests
                 Assert.Contains("--no-messages", m.Value);
     }
 
+    private static readonly string[] CommandNames = { "running", "recent", "snapshots", "snapshot", "open" };
+
+    /// <summary>Every command file, the skill and the plugin README list the same five commands, with the same wording.</summary>
+    [Fact]
+    public void EveryFileListsTheSameFiveCommands()
+    {
+        Assert.Equal(CommandNames.Order(), Directory.GetFiles(Path.Combine(Plugin, "commands"), "*.md").Select(Path.GetFileNameWithoutExtension).Order());
+        var files = Directory.GetFiles(Path.Combine(Plugin, "commands"), "*.md")
+            .Append(Path.Combine(Plugin, "skills", "session-keeper", "SKILL.md")).Append(Path.Combine(Plugin, "README.md"));
+        string[]? expected = null;
+        foreach (var f in files)
+        {
+            var list = Regex.Matches(File.ReadAllText(f), @"(?m)^\s*- `/session-keeper:[^\r\n]+").Select(m => m.Value.Trim()).ToArray();
+            Assert.Equal(CommandNames.Select(c => "/session-keeper:" + c), list.Select(l => Regex.Match(l, @"/session-keeper:[a-z]+").Value));
+            expected ??= list;
+            Assert.Equal(expected, list);
+        }
+        // Claude never sees the user-only commands in its own list, so the files say they exist.
+        foreach (var f in files.SkipLast(1))
+            Assert.Contains("never say they don't exist", File.ReadAllText(f).Replace("\r\n", " ").Replace("\n", " "));
+    }
+
+    [Fact]
+    public void StatusesIncludeShell()
+    {
+        foreach (var f in new[] { Path.Combine(Plugin, "commands", "running.md"), Path.Combine(Plugin, "skills", "session-keeper", "SKILL.md") })
+        {
+            var text = File.ReadAllText(f).Replace("\r\n", " ").Replace("\n", " ");
+            Assert.Contains("*shell* (running a background shell command, such as a dev", text);
+            Assert.Contains("*needs input*", text);
+        }
+    }
+
+    /// <summary>Listings hide untitled temp-folder sessions unless the user adds "all".</summary>
+    [Fact]
+    public void ListingsHideThrowawaySessionsByDefault()
+    {
+        const string script = "\"${CLAUDE_PLUGIN_ROOT}/skills/session-keeper/sessionkeeper.ps1\"";
+        var running = File.ReadAllText(Path.Combine(Plugin, "commands", "running.md"));
+        Assert.Contains(script + " --list --no-messages --hide-temp\n", running.Replace("\r\n", "\n"));
+        Assert.Contains("argument-hint: \"[all]\"", running);
+        var recent = File.ReadAllText(Path.Combine(Plugin, "commands", "recent.md"));
+        Assert.Contains(script + " --recent --no-messages --hide-temp\n", recent.Replace("\r\n", "\n"));
+        Assert.Contains("argument-hint: \"[days] [all]\"", recent);
+        foreach (var allowed in new[] { "--recent --no-messages --hide-temp)", "--recent --no-messages --hide-temp --days *)", "--recent --no-messages)", "--recent --no-messages --days *)" })
+            Assert.Contains(script + " " + allowed, recent);
+        var skill = File.ReadAllText(Path.Combine(Plugin, "skills", "session-keeper", "SKILL.md"));
+        Assert.Contains("`--list --no-messages --hide-temp`", skill);
+        Assert.Contains("`--recent --no-messages --hide-temp`", skill);
+    }
+
     [Fact]
     public void CommandsThatChangeSomethingAreOnlyRunByTheUser()
     {

@@ -81,8 +81,8 @@ public static class McpServer
     /// <summary>What the tools do. Tests use a fake; <see cref="LiveActions"/> reads and launches for real.</summary>
     internal interface IActions
     {
-        string ListRunning();
-        string ListRecent(int days);
+        string ListRunning(bool includeTemp);
+        string ListRecent(int days, bool includeTemp);
         string ListSnapshots();
         (string Text, bool Ok) SaveSnapshot(string? name, string? note);
         (string Text, bool Ok) OpenApp();
@@ -95,8 +95,10 @@ public static class McpServer
         private static readonly Dictionary<string, DateTime> RecentlyOpened = new(StringComparer.OrdinalIgnoreCase);
         internal static readonly TimeSpan OpenGrace = TimeSpan.FromSeconds(60);
 
-        public string ListRunning() => Capture(w => Cli.List(w, new CliOptions("--list", NoMessages: true)));
-        public string ListRecent(int days) => Capture(w => Cli.Recent(w, new CliOptions("--recent", Days: days, NoMessages: true)));
+        public string ListRunning(bool includeTemp) =>
+            Capture(w => Cli.List(w, new CliOptions("--list", NoMessages: true, HideTemp: !includeTemp)));
+        public string ListRecent(int days, bool includeTemp) =>
+            Capture(w => Cli.Recent(w, new CliOptions("--recent", Days: days, NoMessages: true, HideTemp: !includeTemp)));
         public string ListSnapshots() => Capture(w => Cli.Snapshots(w, new CliOptions("--snapshots")));
 
         public (string, bool) SaveSnapshot(string? name, string? note)
@@ -261,11 +263,19 @@ public static class McpServer
         internal static JsonArray Tools() => new()
         {
             Tool("list_running_sessions", "List running sessions",
-                "List the Claude Code sessions running right now: status (working, needs input, idle...), folder, how long ago they were active, title or name, session ID and PID.",
-                new JsonObject(), readOnly: true),
+                "List the Claude Code sessions running right now: status, folder, how long ago they were active, title or name, session ID and PID. " +
+                "Statuses: working (busy), needs input (waiting for the user, e.g. a permission prompt), idle, shell (running a background " +
+                "shell command, such as a dev server), starting (just launched), unmatched (not in Claude Code's session registry). " +
+                HiddenTempText,
+                new JsonObject { ["include_temp"] = IncludeTempProperty() }, readOnly: true),
             Tool("list_recent_sessions", "List recent sessions",
-                "List Claude Code sessions active in the last N days (default 1), newest first, with folder, time, title or name, session ID and whether each is running.",
-                new JsonObject { ["days"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 365, ["description"] = "How many days back to look (1-365, default 1)." } },
+                "List Claude Code sessions active in the last N days (default 1), newest first, with folder, time, title or name, session ID and whether each is running. " +
+                HiddenTempText,
+                new JsonObject
+                {
+                    ["days"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1, ["maximum"] = 365, ["description"] = "How many days back to look (1-365, default 1)." },
+                    ["include_temp"] = IncludeTempProperty(),
+                },
                 readOnly: true),
             Tool("list_snapshots", "List snapshots",
                 "List saved SessionKeeper snapshots: name, when saved, how many sessions and terminals, and the note.",
@@ -284,6 +294,15 @@ public static class McpServer
                 "Resume one Claude Code session in a new PowerShell window or Windows Terminal tab (per SessionKeeper's settings), in the folder Claude Code recorded for it. Refused if it's already running. Get the session ID from list_recent_sessions.",
                 new JsonObject { ["session_id"] = new JsonObject { ["type"] = "string", ["description"] = "The session ID (a GUID) from list_recent_sessions." } },
                 readOnly: false, required: new[] { "session_id" }),
+        };
+
+        private const string HiddenTempText =
+            "Untitled sessions in temp folders (short throwaway runs) are left out and counted at the end, unless include_temp is true.";
+
+        private static JsonObject IncludeTempProperty() => new()
+        {
+            ["type"] = "boolean",
+            ["description"] = "Also list untitled sessions in temp folders (default false). Set it only when the user asks for them.",
         };
 
         private static JsonObject Tool(string name, string title, string description, JsonObject properties, bool readOnly, string[]? required = null)
@@ -319,13 +338,20 @@ public static class McpServer
             {
                 switch (name)
                 {
-                    case "list_running_sessions": return ToolText(id, actions.ListRunning());
+                    case "list_running_sessions":
+                    {
+                        if (!OptionalBool(args, "include_temp", out var includeTemp)) return ToolText(id, "include_temp must be true or false.", isError: true);
+                        return ToolText(id, actions.ListRunning(includeTemp));
+                    }
                     case "list_snapshots": return ToolText(id, actions.ListSnapshots());
                     case "list_recent_sessions":
+                    {
                         int days = 1;
                         if (args["days"] is { } d && (d is not JsonValue dv || !dv.TryGetValue(out days) || days is < 1 or > 365))
                             return ToolText(id, "days must be a whole number from 1 to 365.", isError: true);
-                        return ToolText(id, actions.ListRecent(days));
+                        if (!OptionalBool(args, "include_temp", out var includeTemp)) return ToolText(id, "include_temp must be true or false.", isError: true);
+                        return ToolText(id, actions.ListRecent(days, includeTemp));
+                    }
                     case "save_snapshot":
                     {
                         if (!OptionalString(args, "note", out var note) || !OptionalString(args, "name", out var snapName))
@@ -359,6 +385,13 @@ public static class McpServer
         private static bool OptionalString(JsonObject args, string key, out string? value)
         {
             value = null;
+            if (args[key] is not { } node) return true;
+            return node is JsonValue v && v.TryGetValue(out value);
+        }
+
+        private static bool OptionalBool(JsonObject args, string key, out bool value)
+        {
+            value = false;
             if (args[key] is not { } node) return true;
             return node is JsonValue v && v.TryGetValue(out value);
         }

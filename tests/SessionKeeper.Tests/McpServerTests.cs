@@ -17,8 +17,8 @@ public sealed class McpServerTests : IDisposable
     private sealed class FakeActions : McpServer.IActions
     {
         public readonly List<string> Calls = new();
-        public string ListRunning() { Calls.Add("running"); return "2 Claude Code sessions running"; }
-        public string ListRecent(int days) { Calls.Add("recent " + days); return $"sessions in the last {days} days"; }
+        public string ListRunning(bool includeTemp) { Calls.Add("running" + (includeTemp ? " +temp" : "")); return "2 Claude Code sessions running"; }
+        public string ListRecent(int days, bool includeTemp) { Calls.Add("recent " + days + (includeTemp ? " +temp" : "")); return $"sessions in the last {days} days"; }
         public string ListSnapshots() { Calls.Add("snapshots"); return "No snapshots saved yet."; }
         public (string, bool) SaveSnapshot(string? name, string? note) { Calls.Add($"save [{name}] [{note}]"); return ("Saved snapshot", true); }
         public (string, bool) OpenApp() { Calls.Add("open app"); return ("Opened SessionKeeper", true); }
@@ -114,6 +114,12 @@ public sealed class McpServerTests : IDisposable
             Assert.False((bool)t["inputSchema"]!["additionalProperties"]!);
         });
         Assert.Equal("session_id", (string)byName["open_session"]["inputSchema"]!["required"]![0]!);
+        foreach (var name in new[] { "list_running_sessions", "list_recent_sessions" })
+        {
+            Assert.Equal("boolean", (string)byName[name]["inputSchema"]!["properties"]!["include_temp"]!["type"]!);
+            Assert.Contains("temp folders", (string)byName[name]["description"]!);
+        }
+        Assert.Contains("shell (running a background shell command", (string)byName["list_running_sessions"]["description"]!);
     }
 
     // ------------------------------------------------------------------ tool arguments
@@ -131,10 +137,13 @@ public sealed class McpServerTests : IDisposable
         Call(h, "save_snapshot");
         Call(h, "open_app");
         Call(h, "open_session", new { session_id = " 11111111-2222-3333-4444-555555555555 " });
+        Call(h, "list_running_sessions", new { include_temp = true });
+        Call(h, "list_recent_sessions", new { days = 2, include_temp = true });
+        Call(h, "list_recent_sessions", new { include_temp = false });
         Assert.Equal(new[]
         {
             "running", "recent 1", "recent 7", "snapshots", "save [Friday] [end of day]", "save [] []", "open app",
-            "open 11111111-2222-3333-4444-555555555555",
+            "open 11111111-2222-3333-4444-555555555555", "running +temp", "recent 2 +temp", "recent 1",
         }, fake.Calls);
     }
 
@@ -153,6 +162,8 @@ public sealed class McpServerTests : IDisposable
         Assert.True(Call(h, "open_session", new { session_id = 12 }).IsError);
         Assert.True(Call(h, "open_session", new { session_id = "11111111-2222-3333-4444-555555555555", folder = @"C:\elsewhere" }).IsError);
         Assert.True(Call(h, "open_app", new { args = "--evil" }).IsError);
+        Assert.True(Call(h, "list_recent_sessions", new { include_temp = "yes" }).IsError);
+        Assert.True(Call(h, "list_running_sessions", new { include_temp = 1 }).IsError);
         Assert.Empty(fake.Calls);
     }
 
@@ -181,8 +192,8 @@ public sealed class McpServerTests : IDisposable
 
     private sealed class ThrowingActions : McpServer.IActions
     {
-        public string ListRunning() => throw new IOException("disk on fire");
-        public string ListRecent(int days) => throw new IOException("disk on fire");
+        public string ListRunning(bool includeTemp) => throw new IOException("disk on fire");
+        public string ListRecent(int days, bool includeTemp) => throw new IOException("disk on fire");
         public string ListSnapshots() => throw new IOException("disk on fire");
         public (string, bool) SaveSnapshot(string? name, string? note) => throw new IOException("disk on fire");
         public (string, bool) OpenApp() => throw new IOException("disk on fire");
@@ -233,6 +244,21 @@ public sealed class McpServerTests : IDisposable
             $"{{\"type\":\"last-prompt\",\"lastPrompt\":{J(Secret + " last")},\"sessionId\":\"{Id}\"}}",
             $"{{\"type\":\"ai-title\",\"aiTitle\":\"Demo title\",\"sessionId\":\"{Id}\"}}") + "\n", new UTF8Encoding(false));
         return config;
+    }
+
+    private const string ThrowawayId = "99999999-8888-7777-6666-555555555555";
+
+    /// <summary>Adds an untitled conversation in a folder inside the temp folder (where _root is), like a short throwaway run.</summary>
+    private void AddThrowaway(string config)
+    {
+        var cwd = Path.Combine(_root, "throwaway run");
+        Directory.CreateDirectory(cwd);
+        var dir = Path.Combine(config, "projects", SessionStore.EncodeProjectDir(cwd));
+        Directory.CreateDirectory(dir);
+        var ts = DateTime.UtcNow.AddMinutes(-20).ToString("o");
+        File.WriteAllText(Path.Combine(dir, ThrowawayId + ".jsonl"),
+            $"{{\"type\":\"user\",\"message\":{{\"role\":\"user\",\"content\":\"hi\"}},\"timestamp\":\"{ts}\",\"cwd\":{JsonSerializer.Serialize(cwd)},\"sessionId\":\"{ThrowawayId}\"}}\n",
+            new UTF8Encoding(false));
     }
 
     private static string ExePath()
@@ -302,6 +328,41 @@ public sealed class McpServerTests : IDisposable
     }
 
     [Fact]
+    public void UntitledTempSessionsAreHiddenOnlyWhenAsked()
+    {
+        Assert.StartsWith(Path.GetFullPath(Path.GetTempPath()).TrimEnd('\\'), _root, StringComparison.OrdinalIgnoreCase);
+        var config = FakeClaudeConfig();
+        AddThrowaway(config);
+
+        var all = Run(config, null, "--recent", "--days", "2", "--no-messages");
+        Assert.Contains(ThrowawayId, all.Out);
+        Assert.Contains(Id, all.Out);
+        Assert.DoesNotContain("hidden", all.Out);
+
+        var hidden = Run(config, null, "--recent", "--days", "2", "--no-messages", "--hide-temp");
+        Assert.Equal(0, hidden.Code);
+        Assert.DoesNotContain(ThrowawayId, hidden.Out);
+        Assert.Contains(Id, hidden.Out); // titled, so listed even though it's in a temp folder
+        Assert.Contains("1 untitled session in temp folders hidden", hidden.Out);
+        Assert.StartsWith("1 session in the last 2 days", hidden.Out);
+
+        var json = Run(config, null, "--recent", "--days", "2", "--no-messages", "--hide-temp", "--json");
+        Assert.Single(JsonNode.Parse(json.Out)!.AsArray());
+
+        // The connector hides them by default and lists them with include_temp.
+        var input = string.Join("\n",
+            """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_recent_sessions","arguments":{"days":2}}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_recent_sessions","arguments":{"days":2,"include_temp":true}}}""") + "\n";
+        var (code, output) = Run(config, input, "--mcp");
+        Assert.Equal(0, code);
+        var texts = output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => (string)JsonNode.Parse(l)!["result"]!["content"]![0]!["text"]!).ToList();
+        Assert.DoesNotContain(ThrowawayId, texts[0]);
+        Assert.Contains("hidden", texts[0]);
+        Assert.Contains(ThrowawayId, texts[1]);
+        Assert.DoesNotContain(Secret, output);
+    }
+
+    [Fact]
     public void TheRealConnectorSurvivesABadMessage()
     {
         var input = string.Join("\n",
@@ -356,5 +417,45 @@ public sealed class McpServerTests : IDisposable
         Assert.Throws<CliUsageException>(() => Cli.Parse(new[] { "--snapshots", "--no-messages" }));
         Assert.True(Cli.Parse(new[] { "--list", "--no-messages" }).NoMessages);
         Assert.True(Cli.Parse(new[] { "--recent", "--days", "3", "--no-messages" }).NoMessages);
+        Assert.True(Cli.Parse(new[] { "--list", "--no-messages", "--hide-temp" }).HideTemp);
+        Assert.True(Cli.Parse(new[] { "--recent", "--hide-temp", "--days", "3" }).HideTemp);
+        Assert.False(Cli.Parse(new[] { "--recent" }).HideTemp);
+        Assert.Throws<CliUsageException>(() => Cli.Parse(new[] { "--snapshots", "--hide-temp" }));
+        Assert.Throws<CliUsageException>(() => Cli.Parse(new[] { "--snapshot", "--hide-temp" }));
+        Assert.Throws<CliUsageException>(() => Cli.Parse(new[] { "--mcp", "--hide-temp" }));
+    }
+
+    [Fact]
+    public void TempFoldersAreRecognised()
+    {
+        var roots = new[] { @"D:\Scratch\Temp" };
+        Assert.True(TempFolders.Contains(@"D:\Scratch\Temp", roots));
+        Assert.True(TempFolders.Contains(@"d:\scratch\temp\", roots));
+        Assert.True(TempFolders.Contains(@"D:\Scratch\Temp\run 1\deeper", roots));
+        Assert.True(TempFolders.Contains("D:/Scratch/Temp/run 2", roots));
+        Assert.True(TempFolders.Contains(@"E:\tmp", roots));      // named tmp or Temp anywhere
+        Assert.True(TempFolders.Contains(@"E:\Work\TEMP", roots));
+        Assert.False(TempFolders.Contains(@"D:\Scratch\Temporary", roots));
+        Assert.False(TempFolders.Contains(@"D:\Scratch", roots));
+        Assert.False(TempFolders.Contains(@"E:\Work\templates", roots));
+        Assert.False(TempFolders.Contains(@"E:\Work\Temp project", roots));
+        Assert.False(TempFolders.Contains(@"D:\", new[] { @"D:\" }));  // a drive root never counts
+        Assert.False(TempFolders.Contains(null, roots));
+        Assert.False(TempFolders.Contains("  ", roots));
+        Assert.True(TempFolders.Contains(Path.GetTempPath()));
+        Assert.True(TempFolders.Contains(Path.Combine(Path.GetTempPath(), "some run")));
+        Assert.False(TempFolders.Contains(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)));
+    }
+
+    [Fact]
+    public void OnlyUntitledUnnamedSessionsInTempFoldersAreThrowaway()
+    {
+        var temp = Path.Combine(Path.GetTempPath(), "some run");
+        Assert.True(Cli.IsThrowaway(null, null, temp));
+        Assert.True(Cli.IsThrowaway(" ", "", temp));
+        Assert.False(Cli.IsThrowaway("Fix the build", null, temp));
+        Assert.False(Cli.IsThrowaway(null, "My name", temp));
+        Assert.False(Cli.IsThrowaway(null, null, @"D:\Projects\app"));
+        Assert.False(Cli.IsThrowaway(null, null, null));
     }
 }
