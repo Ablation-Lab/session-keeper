@@ -97,6 +97,8 @@ commands, but they exist: suggest them by name, and never say they don't exist.
 
 ## If SessionKeeper isn't installed (exit code 3)
 
-Tell the user it needs installing: in a clone of the SessionKeeper repository, they run `install.cmd`
-(it needs the .NET 8 SDK and no admin rights; with the plugin, `install.cmd -NoSkill`). If they installed
-it in another folder, they need to add that folder to their PATH.
+Tell the user it needs installing: they download `SessionKeeper.exe` from
+https://github.com/Ablation-Lab/session-keeper/releases/latest, put it in `%LOCALAPPDATA%\Programs\SessionKeeper` and run
+it once. Or they build it from source: in a clone of the repository they run `install.cmd` (it needs the
+.NET 8 SDK and no admin rights; with the plugin, `install.cmd -NoSkill`). If they put it in another
+folder, they need to add that folder to their PATH.

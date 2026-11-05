@@ -28,7 +28,7 @@ Then summarise for me, newest first, one line per session: when it was last acti
 
 If the output ends with a line saying untitled sessions in temp folders were hidden (short throwaway runs), pass that on in one line and mention adding `all` (for example `/session-keeper:recent 3 all`) to see them.
 
-If the exit code is 3, SessionKeeper isn't installed: tell me to run `install.cmd -NoSkill` in the SessionKeeper repository.
+If the exit code is 3, SessionKeeper isn't installed: tell me to download `SessionKeeper.exe` from https://github.com/Ablation-Lab/session-keeper/releases/latest, put it in `%LOCALAPPDATA%\Programs\SessionKeeper` and run it once, or to build it from source with `install.cmd -NoSkill` in the SessionKeeper repository.
 
 ## SessionKeeper's commands
 

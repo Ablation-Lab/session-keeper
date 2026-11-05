@@ -30,7 +30,7 @@ function Find-SessionKeeper {
 
 $exe = Find-SessionKeeper
 if (-not $exe) {
-    [Console]::Error.WriteLine('SessionKeeper.exe was not found. Install it by running install.cmd in the SessionKeeper repository (see its README). If you installed it in another folder, add that folder to your PATH.')
+    [Console]::Error.WriteLine('SessionKeeper.exe was not found. Download SessionKeeper.exe from https://github.com/Ablation-Lab/session-keeper/releases/latest, put it in %LOCALAPPDATA%\Programs\SessionKeeper and run it once, or build it with install.cmd in the SessionKeeper repository (see its README). If you put it in another folder, add that folder to your PATH.')
     exit 3
 }
 

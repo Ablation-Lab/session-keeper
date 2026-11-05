@@ -24,9 +24,16 @@ A small Windows app (C# / .NET 8 WPF) that saves your whole set of Claude Code s
 
 ## Install / Update
 
-You need Windows 10 or 11 and the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). No admin rights are needed.
+You need Windows 10 or 11 (64-bit). No admin rights are needed.
 
-**Install**
+**Install from the release** (quickest; no .NET needed)
+1. Download `SessionKeeper.exe` from the [latest release](https://github.com/Ablation-Lab/session-keeper/releases/latest). It's a self-contained Windows x64 exe, with .NET built in. The release page lists its SHA-256 if you want to check the download.
+2. Create the folder `%LOCALAPPDATA%\Programs\SessionKeeper`, move `SessionKeeper.exe` into it and run it. That's where the Claude Code skill and plugin look for it. The exe isn't code-signed, so Windows SmartScreen may warn the first time: choose **More info**, then **Run anyway**.
+3. Optionally, add it to the Start menu: in that folder, run `SessionKeeper.exe --install-shortcut`.
+
+Settings will say this copy wasn't installed by `install.cmd`; that's expected for the release, and you can ignore it. To update, close SessionKeeper (tray icon > **Exit**), then replace the exe with the one from a newer release. The version footer doesn't check for new releases.
+
+**Or build from source** (needs the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0))
 1. Get this repository onto your PC, for example with `git clone`.
 2. In the repository folder, double-click **install.cmd**.
 3. If SessionKeeper is already running, you're asked whether to close it. It's closed cleanly, never killed, and the install carries on.
