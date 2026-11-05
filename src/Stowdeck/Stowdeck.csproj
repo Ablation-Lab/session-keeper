@@ -1,0 +1,83 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- Only for the tray icon (System.Windows.Forms.NotifyIcon). -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>Stowdeck</AssemblyName>
+    <RootNamespace>Stowdeck</RootNamespace>
+    <!-- Custom Main: command-line options run without starting the UI. -->
+    <StartupObject>Stowdeck.Program</StartupObject>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <!-- The one place the version is set. Bump on each change: patch = fixes, minor = features, major = breaking. -->
+    <Version>1.10.1</Version>
+    <Product>Stowdeck</Product>
+    <Description>See, save and reopen Claude Code sessions.</Description>
+    <!-- Reading another process's working directory relies on 64-bit PEB offsets. -->
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+  <!-- Release (what install.ps1 publishes): source paths in the exe and pdb (e.g. from [CallerFilePath]) don't
+       carry the folder, and so the user name, of whoever built it. The launch log only uses the file name. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <PathMap>$(MSBuildProjectDirectory)=/_/Stowdeck</PathMap>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WPF and WinForms share type names (Application, MessageBox, ...): keep WinForms out of global usings. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Stowdeck.Tests" />
+  </ItemGroup>
+
+  <!--
+    Build info for the version footer: the git commit, the build date, the repository the app was built
+    from (where the update check looks), and whether the source had uncommitted changes. Missing git or
+    a non-git checkout just leaves these out; the build never fails because of them.
+  -->
+  <Target Name="EmbedBuildInfo" BeforeTargets="GetAssemblyAttributes">
+    <Exec Command="git rev-parse HEAD" WorkingDirectory="$(MSBuildProjectDirectory)" ConsoleToMSBuild="true"
+          IgnoreExitCode="true" ContinueOnError="true" StandardOutputImportance="low" StandardErrorImportance="low" EchoOff="true"
+          IgnoreStandardErrorWarningFormat="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_SkCommit" />
+      <Output TaskParameter="ExitCode" PropertyName="_SkCommitExit" />
+    </Exec>
+    <Exec Command="git rev-parse --show-toplevel" WorkingDirectory="$(MSBuildProjectDirectory)" ConsoleToMSBuild="true"
+          IgnoreExitCode="true" ContinueOnError="true" StandardOutputImportance="low" StandardErrorImportance="low" EchoOff="true"
+          IgnoreStandardErrorWarningFormat="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_SkRepo" />
+      <Output TaskParameter="ExitCode" PropertyName="_SkRepoExit" />
+    </Exec>
+    <Exec Command="git diff --quiet HEAD -- ." WorkingDirectory="$(MSBuildProjectDirectory)"
+          IgnoreExitCode="true" ContinueOnError="true" StandardOutputImportance="low" StandardErrorImportance="low" EchoOff="true"
+          IgnoreStandardErrorWarningFormat="true">
+      <Output TaskParameter="ExitCode" PropertyName="_SkDirtyExit" />
+    </Exec>
+    <!-- A repository under the user profile is stored as %USERPROFILE%\…, so the exe doesn't carry the user name. -->
+    <PropertyGroup Condition="'$(_SkRepoExit)' == '0'">
+      <_SkRepoPath>$(_SkRepo.Trim().Replace('/', '\'))</_SkRepoPath>
+      <_SkProfile>$(USERPROFILE.TrimEnd('\'))</_SkProfile>
+      <_SkRepoPath Condition="'$(_SkProfile)' != '' and $(_SkRepoPath.ToLowerInvariant().StartsWith('$(_SkProfile.ToLowerInvariant())\'))">%25USERPROFILE%25$(_SkRepoPath.Substring($(_SkProfile.Length)))</_SkRepoPath>
+    </PropertyGroup>
+    <ItemGroup>
+      <AssemblyMetadata Include="BuildDate" Value="$([System.DateTime]::UtcNow.ToString('o'))" />
+      <AssemblyMetadata Include="CommitHash" Value="$(_SkCommit.Trim())" Condition="'$(_SkCommitExit)' == '0'" />
+      <AssemblyMetadata Include="SourceRepo" Value="$(_SkRepoPath)" Condition="'$(_SkRepoExit)' == '0'" />
+      <AssemblyMetadata Include="SourceDirty" Value="true" Condition="'$(_SkDirtyExit)' == '1'" />
+    </ItemGroup>
+  </Target>
+
+</Project>

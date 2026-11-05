@@ -1,0 +1,79 @@
+<Window x:Class="Stowdeck.TerminalRunWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{StaticResource AppWindow}"
+        Title="Reopen terminals" Width="720" Height="520" MinWidth="520" MinHeight="320"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="14,12,14,14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="IntroText" TextWrapping="Wrap" Margin="0,0,0,4"
+                   Text="Each ticked terminal opens in a new window (or tab) in its folder. Commands run exactly as shown below, nothing else, and only if ticked."/>
+        <TextBlock x:Name="ClaudeText" Grid.Row="1" Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,8" Visibility="Collapsed"/>
+
+        <ListBox x:Name="List" Grid.Row="2" Style="{StaticResource RowList}" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 KeyboardNavigation.TabNavigation="Continue">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                    <Setter Property="IsTabStop" Value="False"/>
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Grid Background="Transparent">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" VerticalAlignment="Top" Margin="0,2,10,0"
+                                  AutomationProperties.Name="{Binding Label}"/>
+                        <StackPanel Grid.Column="1">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Grid.Column="1" Text="{Binding Folder}" Style="{StaticResource MutedText}" Margin="10,0,0,0"
+                                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding Folder}"/>
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Choices}" Visibility="{Binding ChoiceVisibility}" Margin="0,6,0,0" Focusable="False">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <RadioButton Style="{StaticResource SmallTabButton}" Content="{Binding Title}" GroupName="{Binding Group}"
+                                                     IsChecked="{Binding IsSelected, Mode=TwoWay}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBox Text="{Binding CommandText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" Margin="0,6,0,0"
+                                     FontFamily="Cascadia Mono, Consolas" FontSize="12" AutomationProperties.Name="Command that will run"/>
+                            <TextBlock Text="{Binding WarningText}" Foreground="{StaticResource Warn}" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,0"
+                                       Visibility="{Binding WarningVisibility}"/>
+                            <TextBlock Text="{Binding ProblemText}" Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,5,0,0"
+                                       Visibility="{Binding ProblemVisibility}"/>
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <DockPanel Grid.Row="3" Margin="0,12,0,0">
+            <TextBlock x:Name="CountText" Style="{StaticResource MutedText}" VerticalAlignment="Center"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Cancel" IsCancel="True"/>
+                <Button x:Name="OpenButton" Style="{StaticResource PrimaryButton}" Content="Open" Click="Open_Click"/>
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>

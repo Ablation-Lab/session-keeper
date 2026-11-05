@@ -1,12 +1,12 @@
 {
-  "name": "session-keeper",
+  "name": "stowdeck",
   "owner": { "name": "Ablation Lab" },
-  "description": "SessionKeeper from Ablation Lab: save your whole set of Claude Code sessions as a snapshot and restore it in one click (Windows).",
+  "description": "Stowdeck from Ablation Lab: save your whole set of Claude Code sessions as a snapshot and restore it in one click (Windows).",
   "plugins": [
     {
-      "name": "session-keeper",
+      "name": "stowdeck",
       "source": "./plugin",
-      "description": "Save your whole set of Claude Code sessions as a snapshot and restore it in one click with the SessionKeeper app, which also shows recent and running sessions and your other terminal windows. Claude gets a skill and commands to list sessions and snapshots, save a snapshot and open the app.",
+      "description": "Save your whole set of Claude Code sessions as a snapshot and restore it in one click with the Stowdeck app, which also shows recent and running sessions and your other terminal windows. Claude gets a skill and commands to list sessions and snapshots, save a snapshot and open the app.",
       "version": "1.10.1"
     }
   ]

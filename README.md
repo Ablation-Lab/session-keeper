@@ -14,60 +14,62 @@ A small Windows app (C# / .NET 8 WPF) that saves your whole set of Claude Code s
 | **New session** | Start a fresh Claude Code session in a recent or chosen folder, optionally named. | [Starting a new session](#starting-a-new-session) |
 | **Tools on every row** | One **Tools** button per row opens the project's folder, VS Code, GitHub page, Remotion Studio or dev server, showing only what applies. A running Studio or dev server is offered in your browser instead of a second copy. | [Tools](#tools-open-a-projects-folder-editor-github-page-or-dev-server) |
 | **Uncommitted changes badge** | Rows whose project has uncommitted or unpushed git work are marked, with the details on hover. Checked in the background, so the list never waits. | [Uncommitted changes badge](#uncommitted-changes-badge) |
-| **Built-in help** | A **?** button next to Settings (or F1) explains each tab and how to use it, opening on the tab you're on. | [Using SessionKeeper](#using-sessionkeeper) |
+| **Built-in help** | A **?** button next to Settings (or F1) explains each tab and how to use it, opening on the tab you're on. | [Using Stowdeck](#using-stowdeck) |
 | **Windows integration** | PowerShell windows or Windows Terminal tabs, Start with Windows (in the tray), a Start menu shortcut. | [Settings](#settings) |
 | **Version footer** | Shows the build, warns when your clone has newer app changes than your installed copy, and checks the .NET runtime. | [Reading the version footer](#reading-the-version-footer) |
 | **Command line and skill** | List running, recent and saved sessions or save a snapshot from a terminal, or just ask Claude Code. | [Command line](#command-line), [Claude Code skill](#claude-code-skill) |
-| **Claude Code plugin** | The skill plus `/session-keeper:` commands to list running and recent sessions, list snapshots, save a snapshot with a note, and open the app. | [Claude Code plugin](#claude-code-plugin) |
+| **Claude Code plugin** | The skill plus `/stowdeck:` commands to list running and recent sessions, list snapshots, save a snapshot with a note, and open the app. | [Claude Code plugin](#claude-code-plugin) |
 | **MCP connector** | A local MCP server for Claude Desktop and Claude Code with the same actions as tools, plus resuming one session. Plain-text results, no network. | [MCP connector](#mcp-connector-claude-desktop-and-claude-code) |
 | **Safety** | Launches only when you click, every launch logged, no command injection, read-only towards Claude Code and towards the processes it inspects. | [Safety](#safety) |
 
 ## Install / Update
 
+Used this app under its old name? Your settings and snapshots move over by themselves: see [The name](#the-name).
+
 You need Windows 10 or 11 (64-bit). No admin rights are needed.
 
 **Install from the release** (quickest; no .NET needed)
-1. Download `SessionKeeper.exe` from the [latest release](https://github.com/Ablation-Lab/session-keeper/releases/latest). It's a self-contained Windows x64 exe, with .NET built in. The release page lists its SHA-256 if you want to check the download.
-2. Create the folder `%LOCALAPPDATA%\Programs\SessionKeeper`, move `SessionKeeper.exe` into it and run it. That's where the Claude Code skill and plugin look for it. The exe isn't code-signed, so Windows SmartScreen may warn the first time: choose **More info**, then **Run anyway**.
-3. Optionally, add it to the Start menu: in that folder, run `SessionKeeper.exe --install-shortcut`.
+1. Download `Stowdeck.exe` from the [latest release](https://github.com/Ablation-Lab/stowdeck/releases/latest). It's a self-contained Windows x64 exe, with .NET built in. The release page lists its SHA-256 if you want to check the download.
+2. Create the folder `%LOCALAPPDATA%\Programs\Stowdeck`, move `Stowdeck.exe` into it and run it. That's where the Claude Code skill and plugin look for it. The exe isn't code-signed, so Windows SmartScreen may warn the first time: choose **More info**, then **Run anyway**.
+3. Optionally, add it to the Start menu: in that folder, run `Stowdeck.exe --install-shortcut`.
 
-Settings will say this copy wasn't installed by `install.cmd`; that's expected for the release, and you can ignore it. To update, close SessionKeeper (tray icon > **Exit**), then replace the exe with the one from a newer release. The version footer doesn't check for new releases.
+Settings will say this copy wasn't installed by `install.cmd`; that's expected for the release, and you can ignore it. To update, close Stowdeck (tray icon > **Exit**), then replace the exe with the one from a newer release. The version footer doesn't check for new releases.
 
 **Or build from source** (needs the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0))
 1. Get this repository onto your PC, for example with `git clone`.
 2. In the repository folder, double-click **install.cmd**.
-3. If SessionKeeper is already running, you're asked whether to close it. It's closed cleanly, never killed, and the install carries on.
-4. The installer builds the app and installs it for you only, in `%LOCALAPPDATA%\Programs\SessionKeeper`. It also adds a Start menu shortcut and installs the [Claude Code skill](#claude-code-skill) into `%USERPROFILE%\.claude\skills\session-keeper` (or under `CLAUDE_CONFIG_DIR` if you've set it). That's the only thing the installer puts in Claude Code's folder, and it replaces the `SKILL.md` and `sessionkeeper.ps1` of any skill already in a folder with that name.
-5. At the end, you're asked whether to open SessionKeeper. The window then waits for a key press, so you can read what happened, including any error.
+3. If Stowdeck is already running, you're asked whether to close it. It's closed cleanly, never killed, and the install carries on.
+4. The installer builds the app and installs it for you only, in `%LOCALAPPDATA%\Programs\Stowdeck`. It also adds a Start menu shortcut and installs the [Claude Code skill](#claude-code-skill) into `%USERPROFILE%\.claude\skills\stowdeck` (or under `CLAUDE_CONFIG_DIR` if you've set it). That's the only thing the installer puts in Claude Code's folder, and it replaces the `SKILL.md` and `stowdeck.ps1` of any skill already in a folder with that name.
+5. At the end, you're asked whether to open Stowdeck. The window then waits for a key press, so you can read what happened, including any error.
 
 
-**Open it:** Start menu > **SessionKeeper**.
+**Open it:** Start menu > **Stowdeck**.
 
-**Start it when you sign in:** in SessionKeeper, click the gear button and tick **Start with Windows**. If Start with Windows already points at a different copy of the app, the installer offers to switch it to the installed one.
+**Start it when you sign in:** in Stowdeck, click the gear button and tick **Start with Windows**. If Start with Windows already points at a different copy of the app, the installer offers to switch it to the installed one.
 
 **Options:** to use these, run `install.cmd` from a terminal in the repository folder, followed by the switch:
 - `install.cmd -NoSkill` skips the Claude Code skill.
 - `install.cmd -NoStartMenu` skips the Start menu shortcut.
-- `install.cmd -Destination D:\Tools\SessionKeeper` installs to another folder you own. If you use the skill or the plugin, add that folder to your `PATH` so they can find it.
+- `install.cmd -Destination D:\Tools\Stowdeck` installs to another folder you own. If you use the skill or the plugin, add that folder to your `PATH` so they can find it.
 
-**Update:** pull the latest changes (for example `git pull`), then double-click **install.cmd** again. It offers to close the running copy first. The version footer doesn't look online: it compares your installed copy with your local clone, so it turns red with **update available** after you've pulled newer app changes (commits under `src/SessionKeeper`) and haven't reinstalled yet.
+**Update:** pull the latest changes (for example `git pull`), then double-click **install.cmd** again. It offers to close the running copy first. The version footer doesn't look online: it compares your installed copy with your local clone, so it turns red with **update available** after you've pulled newer app changes (commits under `src/Stowdeck`) and haven't reinstalled yet.
 
 **Please don't:**
-- **Copy the build folder by hand** (`src\SessionKeeper\bin\...`). Every build replaces it, so a copy running from there blocks updates, and the app will tell you it isn't installed.
+- **Copy the build folder by hand** (`src\Stowdeck\bin\...`). Every build replaces it, so a copy running from there blocks updates, and the app will tell you it isn't installed.
 - **Install under Program Files.** That needs admin rights and updates would fail, so the installer refuses.
 
 **Uninstall:**
-1. In SessionKeeper's Settings, untick **Start with Windows** and **Start menu shortcut**. This removes the startup entry (under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`) and the shortcut (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\SessionKeeper.lnk`).
-2. Close SessionKeeper: right-click its tray icon and choose **Exit**, or close the window.
-3. Delete the app folder, `%LOCALAPPDATA%\Programs\SessionKeeper`.
-4. Delete the skill folder, `%USERPROFILE%\.claude\skills\session-keeper`.
-5. Optionally, delete `%APPDATA%\SessionKeeper`, which holds your snapshots, session names, settings, logs and cache (the `cache` folder holds Microsoft's .NET release information for the footer).
+1. In Stowdeck's Settings, untick **Start with Windows** and **Start menu shortcut**. This removes the startup entry (under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`) and the shortcut (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Stowdeck.lnk`).
+2. Close Stowdeck: right-click its tray icon and choose **Exit**, or close the window.
+3. Delete the app folder, `%LOCALAPPDATA%\Programs\Stowdeck`.
+4. Delete the skill folder, `%USERPROFILE%\.claude\skills\stowdeck`.
+5. Optionally, delete `%APPDATA%\Stowdeck`, which holds your snapshots, session names, settings, logs and cache (the `cache` folder holds Microsoft's .NET release information for the footer).
 
-**Developing:** run `dotnet build`, then `dotnet test`. The development build is at `src\SessionKeeper\bin\Debug\net8.0-windows\win-x64\SessionKeeper.exe`. For everyday use, install it with `install.cmd`. You can also run `install.ps1` directly (`powershell -ExecutionPolicy Bypass -File install.ps1`). Without `-Interactive` it doesn't prompt; it stops with a message if SessionKeeper is running.
+**Developing:** run `dotnet build`, then `dotnet test`. The development build is at `src\Stowdeck\bin\Debug\net8.0-windows\win-x64\Stowdeck.exe`. For everyday use, install it with `install.cmd`. You can also run `install.ps1` directly (`powershell -ExecutionPolicy Bypass -File install.ps1`). Without `-Interactive` it doesn't prompt; it stops with a message if Stowdeck is running.
 
-## Using SessionKeeper
+## Using Stowdeck
 
-Open **SessionKeeper** from the Start menu. The window has four tabs at the top, **Current**, **Recent**, **Snapshots** and **Terminals**, a gear button at the top right for Settings, and a **?** button next to it (or F1) for built-in help. The help opens on the topic for the tab you're on and covers each tab, opening and naming sessions, settings, keyboard shortcuts and safety. The first three tabs' bottom bars have a **New session…** button, and their rows have a [**Tools**](#tools-open-a-projects-folder-editor-github-page-or-dev-server) button next to **Open**. Hover over any row to see its full folder path and the first 8 characters of its session ID. The tooltip also shows the last message on Current rows, and the first and last messages on Recent rows.
+Open **Stowdeck** from the Start menu. The window has four tabs at the top, **Current**, **Recent**, **Snapshots** and **Terminals**, a gear button at the top right for Settings, and a **?** button next to it (or F1) for built-in help. The help opens on the topic for the tab you're on and covers each tab, opening and naming sessions, settings, keyboard shortcuts and safety. The first three tabs' bottom bars have a **New session…** button, and their rows have a [**Tools**](#tools-open-a-projects-folder-editor-github-page-or-dev-server) button next to **Open**. Hover over any row to see its full folder path and the first 8 characters of its session ID. The tooltip also shows the last message on Current rows, and the first and last messages on Recent rows.
 
 ### Current tab: what's running now
 
@@ -76,7 +78,7 @@ Open **SessionKeeper** from the Start menu. The window has four tabs at the top,
    - **Bold label:** your name for the session if you've given it one (see [Naming sessions](#naming-sessions)). Otherwise it's the session's own title, or the folder name if that title is missing or generic (such as "Continuing previous session").
    - **Grey text on the right:** the project folder. Hover over it for the full path.
    - **Second line:** the last message you sent in that session.
-   - **Right-hand side:** how long ago the session was active, and its status: *working*, *needs input* (waiting for you, for example at a permission prompt), *idle*, *shell* (running a background shell command, such as a dev server), *starting* (just launched) or *unmatched*. Rarely, it's *unknown* or another word: a status Claude Code reported that SessionKeeper doesn't recognise, shown as reported.
+   - **Right-hand side:** how long ago the session was active, and its status: *working*, *needs input* (waiting for you, for example at a permission prompt), *idle*, *shell* (running a background shell command, such as a dev server), *starting* (just launched) or *unmatched*. Rarely, it's *unknown* or another word: a status Claude Code reported that Stowdeck doesn't recognise, shown as reported.
 3. An *unmatched* row is a `claude` process that isn't in Claude Code's session registry, for example one sitting at the "trust this folder" prompt. It's shown so nothing is hidden, but it has no session ID, so it can't be opened or saved as a resumable session.
 4. The list refreshes itself every 10 seconds while this tab is showing and the window isn't minimised. Click **Refresh** to update it straight away. The summary at the top right, such as "6 running · 1 working", shows when it last updated.
 5. To open a session from here, see [Opening a session](#opening-a-session). Every session on this tab is already running, so you'll always be asked before a second copy opens.
@@ -114,7 +116,7 @@ Give any session your own name, so it's easy to spot, for example "Login fix" in
 4. When you open, reopen or restore the session, its window or tab is titled with the name. To keep it there, Claude Code's own title updates are switched off for that window, so it doesn't show Claude's busy indicator in the title. Unnamed sessions keep Claude's live title.
 5. To go back to the session's own title, right-click the row and choose **Clear name**, or rename it to an empty name.
 
-Names are stored only in SessionKeeper's own file, `%APPDATA%\SessionKeeper\nicknames.json`, keyed by session ID. Claude Code's files are never changed. A snapshot keeps the name each session had when you saved it. A row needs a session ID to be named, so *unmatched* rows can't be.
+Names are stored only in Stowdeck's own file, `%APPDATA%\Stowdeck\nicknames.json`, keyed by session ID. Claude Code's files are never changed. A snapshot keeps the name each session had when you saved it. A row needs a session ID to be named, so *unmatched* rows can't be.
 
 Names you give a session inside Claude Code itself (its rename command, or `claude --name`) are already shown as that session's title.
 
@@ -157,9 +159,9 @@ Terminals you've ticked on the [Terminals tab](#terminals-tab-other-agents-progr
 
 **What gets saved**
 - For each session: its session ID, project folder, your name for it (if any), its title, last message, last-active time and your note.
-- For each terminal: its label, type (agent, program or shell), folder, shell, and the command line of the program running in it. They go in a separate `terminals` list, each entry marked `"kind": "terminal"`, so an older SessionKeeper never mistakes one for a Claude session. (An older version shows a snapshot that holds only terminals as "0 sessions", but keeps the terminals if you rename it.) Entries without `"kind": "terminal"`, or that can't be read, are ignored without affecting the rest of the snapshot.
+- For each terminal: its label, type (agent, program or shell), folder, shell, and the command line of the program running in it. They go in a separate `terminals` list, each entry marked `"kind": "terminal"`, so an older Stowdeck never mistakes one for a Claude session. (An older version shows a snapshot that holds only terminals as "0 sessions", but keeps the terminals if you rename it.) Entries without `"kind": "terminal"`, or that can't be read, are ignored without affecting the rest of the snapshot.
 - For the snapshot: its name, when it was saved and its note.
-- One readable JSON file per snapshot, in `%APPDATA%\SessionKeeper\snapshots\`, named like `2026-11-03_184000_end-of-day.json`. On the Snapshots tab, **Open folder** opens this folder.
+- One readable JSON file per snapshot, in `%APPDATA%\Stowdeck\snapshots\`, named like `2026-11-03_184000_end-of-day.json`. On the Snapshots tab, **Open folder** opens this folder.
 - A running session with no messages yet is saved without a session ID. Restoring it starts a new session in that folder.
 
 **Restore a snapshot**
@@ -182,11 +184,11 @@ You can also open a single session or terminal from a snapshot with its **Open**
 
 ### Terminals tab: other agents, programs and shells
 
-The **Terminals** tab lists the terminal sessions that aren't Claude Code: other CLI agents (Codex CLI, Gemini CLI, Aider, GitHub Copilot CLI and others), programs such as `npm run dev`, and plain shells. Claude Code sessions are left out, because they have their own tabs, and so is SessionKeeper itself.
+The **Terminals** tab lists the terminal sessions that aren't Claude Code: other CLI agents (Codex CLI, Gemini CLI, Aider, GitHub Copilot CLI and others), programs such as `npm run dev`, and plain shells. Claude Code sessions are left out, because they have their own tabs, and so is Stowdeck itself.
 
 1. Click the **Terminals** tab.
 2. Read each row:
-   - **Bold label:** the agent's name if SessionKeeper recognises it, otherwise the shell ("PowerShell", "Command Prompt", "Bash") or, for a tab that runs a program directly, the program.
+   - **Bold label:** the agent's name if Stowdeck recognises it, otherwise the shell ("PowerShell", "Command Prompt", "Bash") or, for a tab that runs a program directly, the program.
    - **Grey text on the right:** the folder. Hover over it for the full path.
    - **Second line:** the command running in it, shortened (for example `npm run dev`). Hover over it for the full command line. *(at the prompt)* means the shell is idle.
    - **Right-hand side:** how long the terminal has been open, and its type: *agent*, *program* or *shell*.
@@ -205,7 +207,7 @@ The **Terminals** tab lists the terminal sessions that aren't Claude Code: other
 - **Agents** are recognised by their exe name, or by the script that node or python runs. So `npm i -g @openai/codex` is a program, not Codex.
 - **Other terminal apps** (VS Code's terminal and so on) aren't listed. Hosts are listed in `KnownAgents.TerminalHosts`.
 
-**Adding an agent:** agents are recognised by one list, `KnownAgents.Agents` in `src/SessionKeeper/Services/KnownAgents.cs`. Add one line with the name, the exe name and, for npm-installed agents, the package name as it appears in node's command line, for example `@openai/codex`.
+**Adding an agent:** agents are recognised by one list, `KnownAgents.Agents` in `src/Stowdeck/Services/KnownAgents.cs`. Add one line with the name, the exe name and, for npm-installed agents, the package name as it appears in node's command line, for example `@openai/codex`.
 
 ### Reopening terminals
 
@@ -215,7 +217,7 @@ A saved terminal reopens in a new PowerShell window or Windows Terminal tab (the
 2. The **Reopen terminals** dialog lists each terminal with the exact command that will run, built from the same values that are launched. A terminal that's still running right now (the same command or agent in the same folder) says so and starts unticked, because reopening it would start a second copy.
 3. For each terminal, choose:
    - **Run the command again:** starts the same program with the same arguments.
-   - **Resume …'s last conversation:** shown only for an agent with a resume option SessionKeeper has verified. At the moment no agent has one: none of them was installed where this version was built, so none could be checked against the agent's own `--help`. To add one after checking it, give the agent a `Resume:` entry in `KnownAgents.Agents`.
+   - **Resume …'s last conversation:** shown only for an agent with a resume option Stowdeck has verified. At the moment no agent has one: none of them was installed where this version was built, so none could be checked against the agent's own `--help`. To add one after checking it, give the agent a `Resume:` entry in `KnownAgents.Agents`.
    - **Open … only:** just the shell, in the folder.
 4. Commands that look destructive are shown with a red warning and left **unticked**. Tick one only if you mean to run it. Switching a row to a destructive choice unticks it again. The check covers:
    - delete, format and wipe commands: `rm` (and `rm -rf`), `del`, `rd`, `format`, `Remove-Item`, `Clear-Content`, `diskpart`, `dd of=`, `robocopy /mir`;
@@ -252,7 +254,7 @@ The grey text on the right of an item says what it opens or runs: `owner/repo` f
 2. Click **Open folder**. File Explorer opens on the project folder.
 
 **VS Code**
-1. Click **Tools** on the row. If **VS Code** isn't listed, SessionKeeper didn't find it: it looks in VS Code's usual install folders (per user and per machine), its App Paths registration, and `code.cmd` on your `PATH`.
+1. Click **Tools** on the row. If **VS Code** isn't listed, Stowdeck didn't find it: it looks in VS Code's usual install folders (per user and per machine), its App Paths registration, and `code.cmd` on your `PATH`.
 2. Click **VS Code**. The project opens in VS Code, or VS Code switches to it if it's already open.
 
 **GitHub**
@@ -277,7 +279,7 @@ The grey text on the right of an item says what it opens or runs: `owner/repo` f
   - a project whose `.npmrc` sets `prefix`, `globalconfig` or `userconfig`, because `npm.cmd` asks npm for its prefix first and would then run an npm from there instead of the installed one;
   - network (UNC) folders, where `cmd.exe` silently starts in `C:\Windows` instead.
 - Each item checks the folder again when you click it, so a folder that has gone since the list was shown isn't opened. The path must also be in Windows' normal form: a folder name ending in a dot or space (Windows would quietly open the folder without it), `.`/`..` segments or forward slashes are refused.
-- **VS Code** starts without any `ELECTRON_*` or `NODE_OPTIONS` variables SessionKeeper may have inherited (for example when started from a VS Code terminal), since those could change how VS Code starts.
+- **VS Code** starts without any `ELECTRON_*` or `NODE_OPTIONS` variables Stowdeck may have inherited (for example when started from a VS Code terminal), since those could change how VS Code starts.
 - If you start Studio or the dev server again within 30 seconds (before it's listening, so it can't be detected yet), you're asked before a second copy starts. If it's running but has no address yet, you're told to try again in a moment.
 - "Already running" for Remotion Studio means a `node` process running Remotion's `studio` (or older `preview`) command whose working folder is the project, or a folder inside it if Remotion comes from the project's own `node_modules`. For Dev server it means an `npm run dev` process, started from anywhere, whose working folder (or that of one of its own processes) is the project. The address is the lowest port listened on by the processes running in the project, read from Windows' TCP table, so with `npm run dev --workspaces` at a monorepo root each project is offered its own port. A Studio in a subfolder that has its own `package.json` belongs to that subfolder, not the parent project. A server in a similarly named folder (`demo-2` for `demo`) doesn't count.
 
@@ -306,15 +308,15 @@ Some repositories get no badge, and are looked at again only every ten minutes:
 2. Choose how sessions open under **Open sessions in**. This applies to **Open**, **Reopen selected**, **Restore**, **New session**, reopened terminals, and **Remotion Studio** and **Dev server** in the Tools menu.
    - **PowerShell window** (the default): each session opens in its own Windows PowerShell window.
    - **Windows Terminal tab:** sessions open as tabs in a Windows Terminal window. This option is greyed out if Terminal isn't installed.
-3. Optionally, tick **Start with Windows**. SessionKeeper then starts in the system tray when you sign in. Click the tray icon to open it, or right-click it and choose **Exit**. It's off by default.
-4. Optionally, tick **Start menu shortcut** to add SessionKeeper to your Start menu. The installer already does this.
+3. Optionally, tick **Start with Windows**. Stowdeck then starts in the system tray when you sign in. Click the tray icon to open it, or right-click it and choose **Exit**. It's off by default.
+4. Optionally, tick **Start menu shortcut** to add Stowdeck to your Start menu. The installer already does this.
 5. Click **Close**. Changes take effect immediately, so there's no Save button.
 
 **Running from** shows which copy of the app you're using. **Start with Windows** and **Start menu shortcut** point at that copy. If it says Start with Windows "currently starts a different copy", untick and tick the box to point it at this one.
 
 If you're running a copy that wasn't installed, such as the build folder, Settings shows a **This copy isn't installed** notice at the top. Click **Open repo folder** and double-click **install.cmd** there.
 
-Starting SessionKeeper while it's already open brings the existing window forward, including from the tray.
+Starting Stowdeck while it's already open brings the existing window forward, including from the tray.
 
 ### Reading the version footer
 
@@ -330,7 +332,7 @@ The bottom of the **Current** tab shows a line like this:
   - **Installed on this PC:** every .NET and Windows Desktop runtime found on the machine.
   - **Latest patch and support:** the newest patch for that .NET version, and when Microsoft's support for it ends.
   - **Grey:** up to date, or the check couldn't run (for example, offline).
-  - **Red:** Microsoft has released a newer patch for this .NET version (the tooltip names it and says whether it has security fixes), or this .NET version is out of support. For a self-contained copy, updating means rebuilding SessionKeeper, not installing a new runtime.
+  - **Red:** Microsoft has released a newer patch for this .NET version (the tooltip names it and says whether it has security fixes), or this .NET version is out of support. For a self-contained copy, updating means rebuilding Stowdeck, not installing a new runtime.
 
 Each part has its own colour, so you can tell which one is out of date. Both checks run once at startup in the background and never slow down opening the app.
 
@@ -341,13 +343,13 @@ Each part has its own colour, so you can tell which one is out of date. Both che
 The same exe has command-line options. It never opens the window when you use them:
 
 ```text
-SessionKeeper.exe --list [--json] [--no-messages] [--hide-temp]   running sessions
-SessionKeeper.exe --recent [--days N] [--json] [--no-messages] [--hide-temp]   sessions active in the last N days (default 1)
-SessionKeeper.exe --snapshots [--json]                    saved snapshots (with how many terminals each has)
-SessionKeeper.exe --snapshot ["note"] [--name "name"] [--json]   save the running sessions
-SessionKeeper.exe --install-shortcut                      add the Start menu shortcut
-SessionKeeper.exe --mcp                                   run the MCP connector (started by Claude Desktop or Claude Code)
-SessionKeeper.exe --help | --version
+Stowdeck.exe --list [--json] [--no-messages] [--hide-temp]   running sessions
+Stowdeck.exe --recent [--days N] [--json] [--no-messages] [--hide-temp]   sessions active in the last N days (default 1)
+Stowdeck.exe --snapshots [--json]                    saved snapshots (with how many terminals each has)
+Stowdeck.exe --snapshot ["note"] [--name "name"] [--json]   save the running sessions
+Stowdeck.exe --install-shortcut                      add the Start menu shortcut
+Stowdeck.exe --mcp                                   run the MCP connector (started by Claude Desktop or Claude Code)
+Stowdeck.exe --help | --version
 ```
 
 - `--no-messages` leaves out each session's first and last messages, so the output has only titles, names, folders, times, statuses and session IDs. The skill, the plugin and the MCP connector always use it.
@@ -355,19 +357,19 @@ SessionKeeper.exe --help | --version
 
 - `--snapshot` uses the same rules as the Save dialog. Matched sessions are saved, and unmatched or still-starting processes are skipped and listed.
 - Exit codes: 0 means OK, 1 means nothing to do or an error, and 2 means a usage error.
-- PowerShell doesn't wait for GUI apps, so pipe the output: `SessionKeeper.exe --list | Out-Host`.
-- `SESSIONKEEPER_SNAPSHOTS` sets a different snapshots folder.
+- PowerShell doesn't wait for GUI apps, so pipe the output: `Stowdeck.exe --list | Out-Host`.
+- `STOWDECK_SNAPSHOTS` sets a different snapshots folder.
 
 ### Claude Code skill
 
-`plugin/skills/session-keeper/` lets you ask Claude Code things like:
-- "open SessionKeeper"
+`plugin/skills/stowdeck/` lets you ask Claude Code things like:
+- "open Stowdeck"
 - "list my running sessions"
 - "what did I work on today?"
 - "save a snapshot of my sessions with the note waiting on council results"
 
-It runs the command-line options above through `sessionkeeper.ps1`, which finds `SessionKeeper.exe` in this order:
-1. `%LOCALAPPDATA%\Programs\SessionKeeper\SessionKeeper.exe`, where `install.cmd` puts it.
+It runs the command-line options above through `stowdeck.ps1`, which finds `Stowdeck.exe` in this order:
+1. `%LOCALAPPDATA%\Programs\Stowdeck\Stowdeck.exe`, where `install.cmd` puts it.
 2. `PATH`, for a copy installed somewhere else.
 
 It always lists sessions with `--no-messages`, so Claude sees titles, names, folders and times, not what was said. It also uses `--hide-temp` unless you ask for all sessions (or for throwaway or temp-folder ones). Restoring sessions stays in the app, because that opens new windows. The skill pre-approves nothing, so Claude Code shows you each command and asks before it runs, unless your own permission settings already allow it.
@@ -375,12 +377,12 @@ It always lists sessions with `--no-messages`, so Claude sees titles, names, fol
 `install.cmd` installs the skill for you. To install it by hand, copy the folder:
 
 ```powershell
-Copy-Item -Recurse -Force plugin\skills\session-keeper "$env:USERPROFILE\.claude\skills\"
+Copy-Item -Recurse -Force plugin\skills\stowdeck "$env:USERPROFILE\.claude\skills\"
 ```
 
-That gives you `~/.claude/skills/session-keeper/SKILL.md` (on Windows, `%USERPROFILE%\.claude\skills\session-keeper\SKILL.md`). Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. Claude Code picks the skill up without a restart (if the `skills` folder didn't exist when the session started, type `/reload-skills`). The [plugin](#claude-code-plugin) includes the same skill.
+That gives you `~/.claude/skills/stowdeck/SKILL.md` (on Windows, `%USERPROFILE%\.claude\skills\stowdeck\SKILL.md`). Use `%CLAUDE_CONFIG_DIR%\skills\` instead if you've set `CLAUDE_CONFIG_DIR`. Claude Code picks the skill up without a restart (if the `skills` folder didn't exist when the session started, type `/reload-skills`). The [plugin](#claude-code-plugin) includes the same skill.
 
-**claude.ai:** the skill doesn't work there. It drives the SessionKeeper app on your Windows computer, and skills uploaded to claude.ai run in Anthropic's sandbox, which can't reach your computer. Use it in Claude Code, or use the [MCP connector](#mcp-connector-claude-desktop-and-claude-code) in Claude Desktop.
+**claude.ai:** the skill doesn't work there. It drives the Stowdeck app on your Windows computer, and skills uploaded to claude.ai run in Anthropic's sandbox, which can't reach your computer. Use it in Claude Code, or use the [MCP connector](#mcp-connector-claude-desktop-and-claude-code) in Claude Desktop.
 
 ### Claude Code plugin
 
@@ -388,54 +390,54 @@ The `plugin` folder is a Claude Code plugin. It bundles the [skill](#claude-code
 
 | Command | What it does |
 |---|---|
-| `/session-keeper:running [all]` | Lists the Claude Code sessions running now, with their status. |
-| `/session-keeper:recent [days] [all]` | Lists sessions from today, or from the last N days (1 to 365). |
-| `/session-keeper:snapshots` | Lists your saved snapshots. |
-| `/session-keeper:snapshot [note]` | Saves the running sessions as a snapshot, with an optional note. |
-| `/session-keeper:open` | Opens the SessionKeeper window. |
+| `/stowdeck:running [all]` | Lists the Claude Code sessions running now, with their status. |
+| `/stowdeck:recent [days] [all]` | Lists sessions from today, or from the last N days (1 to 365). |
+| `/stowdeck:snapshots` | Lists your saved snapshots. |
+| `/stowdeck:snapshot [note]` | Saves the running sessions as a snapshot, with an optional note. |
+| `/stowdeck:open` | Opens the Stowdeck window. |
 
-The listing commands leave out untitled sessions in temp folders (short throwaway runs) and say how many they hid. Add `all` to include them, for example `/session-keeper:recent 3 all`.
+The listing commands leave out untitled sessions in temp folders (short throwaway runs) and say how many they hid. Add `all` to include them, for example `/stowdeck:recent 3 all`.
 
 **Install the plugin**
-1. Install SessionKeeper 1.10.1 or later with `install.cmd` (see [Install / Update](#install--update)). The plugin uses the app's `--no-messages` and `--hide-temp` options, which earlier versions don't have.
+1. Install Stowdeck 1.10.1 or later with `install.cmd` (see [Install / Update](#install--update)). The plugin uses the app's `--no-messages` and `--hide-temp` options, which earlier versions don't have.
 2. In Claude Code, add the marketplace. From your clone:
    ```text
-   /plugin marketplace add C:\path\to\session-keeper
+   /plugin marketplace add C:\path\to\stowdeck
    ```
    or from GitHub:
    ```text
-   /plugin marketplace add Ablation-Lab/session-keeper
+   /plugin marketplace add Ablation-Lab/stowdeck
    ```
 3. Install the plugin:
    ```text
-   /plugin install session-keeper@session-keeper
+   /plugin install stowdeck@stowdeck
    ```
-   On Claude Code 2.1.275 or later you can do steps 2 and 3 in one go: `/plugin install session-keeper --marketplace Ablation-Lab/session-keeper`.
-4. Start a new Claude Code session. Type `/session-keeper:` to see the commands.
+   On Claude Code 2.1.275 or later you can do steps 2 and 3 in one go: `/plugin install stowdeck --marketplace Ablation-Lab/stowdeck`.
+4. Start a new Claude Code session. Type `/stowdeck:` to see the commands.
 
-From a terminal, `claude plugin marketplace add <path or Ablation-Lab/session-keeper>` and `claude plugin install session-keeper@session-keeper` do the same. To update it later, run `/plugin marketplace update session-keeper` (after pulling, if you added your local clone), then choose **Update now** for the plugin on the **Installed** tab of `/plugin`, or run `claude plugin update session-keeper@session-keeper` from a terminal. Auto-update is off by default for marketplaces other than Anthropic's; you can turn it on under `/plugin` > **Marketplaces**.
+From a terminal, `claude plugin marketplace add <path or Ablation-Lab/stowdeck>` and `claude plugin install stowdeck@stowdeck` do the same. To update it later, run `/plugin marketplace update stowdeck` (after pulling, if you added your local clone), then choose **Update now** for the plugin on the **Installed** tab of `/plugin`, or run `claude plugin update stowdeck@stowdeck` from a terminal. Auto-update is off by default for marketplaces other than Anthropic's; you can turn it on under `/plugin` > **Marketplaces**.
 
 The plugin includes the skill, so you don't need the copy `install.cmd` puts in `%USERPROFILE%\.claude\skills` as well. If you use the plugin, install the app with `install.cmd -NoSkill`, or delete that folder, so Claude Code doesn't see the skill twice. What the plugin runs, reads and writes, and its privacy notes, are in the [plugin's README](plugin/README.md#privacy).
 
 **Use the plugin**
-1. In any Claude Code session, type `/session-keeper:running`. Claude runs SessionKeeper and replies with one line per running session: folder, name or title, status, and when it was last active.
-2. Type `/session-keeper:recent 3` to see what you worked on in the last three days.
-3. If the reply says untitled sessions in temp folders were hidden, type `/session-keeper:recent 3 all` to see them too.
-4. At the end of the day, type `/session-keeper:snapshot waiting on review` to save your running sessions with that note.
-5. Later, type `/session-keeper:open` and restore the snapshot from the **Snapshots** tab.
+1. In any Claude Code session, type `/stowdeck:running`. Claude runs Stowdeck and replies with one line per running session: folder, name or title, status, and when it was last active.
+2. Type `/stowdeck:recent 3` to see what you worked on in the last three days.
+3. If the reply says untitled sessions in temp folders were hidden, type `/stowdeck:recent 3 all` to see them too.
+4. At the end of the day, type `/stowdeck:snapshot waiting on review` to save your running sessions with that note.
+5. Later, type `/stowdeck:open` and restore the snapshot from the **Snapshots** tab.
 
 You can also just ask, as with the skill: "which sessions are waiting for me?" or "save my sessions with the note end of day".
 
 **What it can do**
-- The commands run only the bundled `sessionkeeper.ps1`, with fixed options. They pre-approve nothing, so Claude Code shows you each command and asks before it runs.
-- `/session-keeper:snapshot` and `/session-keeper:open` run only when you type them. Claude can't run them on its own.
+- The commands run only the bundled `stowdeck.ps1`, with fixed options. They pre-approve nothing, so Claude Code shows you each command and asks before it runs.
+- `/stowdeck:snapshot` and `/stowdeck:open` run only when you type them. Claude can't run them on its own.
 - A snapshot note is passed as one single-quoted argument. The command tells Claude to change any apostrophes in it to ʼ (which no shell treats as a quote), straight double quotes to ”, and line breaks to spaces first, so a note can't end the quotes and add options or commands, in Bash or PowerShell.
 - Results show titles, names, folders, times, statuses and session IDs, never what was said in a conversation. The listing commands use `--no-messages`.
 - Every command file and the skill list the same five commands, and say that `snapshot` and `open` exist even though Claude can't run them itself.
 
 ### MCP connector (Claude Desktop and Claude Code)
 
-`SessionKeeper.exe --mcp` is a small local [MCP](https://modelcontextprotocol.io) server. Claude Desktop or Claude Code starts it in the background and talks to it through its standard input and output. It opens no network port and connects to nothing.
+`Stowdeck.exe --mcp` is a small local [MCP](https://modelcontextprotocol.io) server. Claude Desktop or Claude Code starts it in the background and talks to it through its standard input and output. It opens no network port and connects to nothing.
 
 | Tool | What it does | Changes anything? |
 |---|---|---|
@@ -443,45 +445,45 @@ You can also just ask, as with the skill: "which sessions are waiting for me?" o
 | `list_recent_sessions` | Sessions from the last N days (1 to 365, default 1), newest first, and whether each is running. Optional `include_temp`. | No |
 | `list_snapshots` | Saved snapshots: name, date, how many sessions and terminals, note. | No |
 | `save_snapshot` | Saves the running sessions as a snapshot, with an optional name and note. | Writes one snapshot file |
-| `open_app` | Opens the SessionKeeper window (an open one comes to the front). | Opens a window |
+| `open_app` | Opens the Stowdeck window (an open one comes to the front). | Opens a window |
 | `open_session` | Resumes one session, by its session ID, in a new PowerShell window or Windows Terminal tab. | Opens a window |
 
 Results are plain text with titles, names, folders, times, statuses and session IDs, never what was said in a conversation. The two list tools leave out untitled sessions in temp folders (short throwaway runs) and say how many they hid, unless `include_temp` is true.
 
 **Install it in Claude Desktop**
-1. Install SessionKeeper 1.10.1 or later with `install.cmd`.
+1. Install Stowdeck 1.10.1 or later with `install.cmd`.
 2. In Claude Desktop, open **Settings** > **Developer** > **Edit Config**. This opens `%APPDATA%\Claude\claude_desktop_config.json` (create it if it doesn't exist).
-3. Add SessionKeeper under `mcpServers`, with your user name in the path. If the file already has other servers, add this entry next to them:
+3. Add Stowdeck under `mcpServers`, with your user name in the path. If the file already has other servers, add this entry next to them:
    ```json
    {
      "mcpServers": {
-       "sessionkeeper": {
-         "command": "C:\\Users\\YOUR-NAME\\AppData\\Local\\Programs\\SessionKeeper\\SessionKeeper.exe",
+       "stowdeck": {
+         "command": "C:\\Users\\YOUR-NAME\\AppData\\Local\\Programs\\Stowdeck\\Stowdeck.exe",
          "args": ["--mcp"]
        }
      }
    }
    ```
-4. Save the file and restart Claude Desktop. **sessionkeeper** then appears in the connectors (tools) menu of a new chat.
+4. Save the file and restart Claude Desktop. **stowdeck** then appears in the connectors (tools) menu of a new chat.
 
 **Install it in Claude Code**
-1. Install SessionKeeper 1.10.1 or later with `install.cmd`.
+1. Install Stowdeck 1.10.1 or later with `install.cmd`.
 2. In PowerShell, add it for all your projects:
    ```powershell
-   claude mcp add --scope user sessionkeeper -- "$env:LOCALAPPDATA\Programs\SessionKeeper\SessionKeeper.exe" --mcp
+   claude mcp add --scope user stowdeck -- "$env:LOCALAPPDATA\Programs\Stowdeck\Stowdeck.exe" --mcp
    ```
-3. Start a new Claude Code session and run `/mcp` to check that **sessionkeeper** is connected.
+3. Start a new Claude Code session and run `/mcp` to check that **stowdeck** is connected.
 
-To remove it: delete the entry from `claude_desktop_config.json`, or run `claude mcp remove --scope user sessionkeeper`.
+To remove it: delete the entry from `claude_desktop_config.json`, or run `claude mcp remove --scope user stowdeck`.
 
-**Updating:** `install.cmd` pauses any running connectors while it replaces the app (they lock `SessionKeeper.exe`), using a stop signal of their own. Afterwards, restart Claude Desktop, or run `/mcp` in Claude Code, to reconnect.
+**Updating:** `install.cmd` pauses any running connectors while it replaces the app (they lock `Stowdeck.exe`), using a stop signal of their own. Afterwards, restart Claude Desktop, or run `/mcp` in Claude Code, to reconnect.
 
 **Use the connector**
 1. In a new chat, ask "Which Claude Code sessions are running?" Claude calls `list_running_sessions` and summarises the result.
 2. Ask "What did I work on in the last 3 days?" for `list_recent_sessions`. Add "including the throwaway temp ones" to see untitled temp-folder sessions too.
 3. Ask "Save my sessions as a snapshot with the note waiting on review". Claude asks your permission to use `save_snapshot`, then confirms what was saved.
 4. Ask "Open the session about the release notes". Claude finds its session ID with `list_recent_sessions`, asks your permission for `open_session`, and the session opens in a new window in its own folder.
-5. Ask "Open SessionKeeper" for `open_app`, then restore a whole snapshot from the **Snapshots** tab.
+5. Ask "Open Stowdeck" for `open_app`, then restore a whole snapshot from the **Snapshots** tab.
 
 **What it can do**
 - The three list tools are marked read-only. Claude Desktop and Claude Code ask you before using `save_snapshot`, `open_app` or `open_session`, unless you've chosen to always allow them.
@@ -492,16 +494,16 @@ To remove it: delete the entry from `claude_desktop_config.json`, or run `claude
 
 ### Version and update checks
 
-- **Version:** the version is set in one place, `<Version>` in `src/SessionKeeper/SessionKeeper.csproj`. Bump it with each change: patch for fixes, minor for features, major for breaking changes. The commit, build date and source repository are embedded automatically when you build. `SessionKeeper.exe --version` prints the same line as the footer.
-- **App check:** compares the build commit with `HEAD` of the local repository the app was built from. It's offline and local only: nothing is fetched, so the footer turns red only once you've pulled newer commits. You can set a different repository as `sourceRepo` in `%APPDATA%\SessionKeeper\settings.json`. Only commits that touch `src/SessionKeeper` count, so README, test or installer changes don't. A repository under your user profile is embedded in the exe as `%USERPROFILE%\…`, so a copy you pass on doesn't carry your user name. It runs only `git rev-list` and `git rev-parse`, with optional locks off, hidden, with short timeouts, and logged. It never pulls, builds or installs.
+- **Version:** the version is set in one place, `<Version>` in `src/Stowdeck/Stowdeck.csproj`. Bump it with each change: patch for fixes, minor for features, major for breaking changes. The commit, build date and source repository are embedded automatically when you build. `Stowdeck.exe --version` prints the same line as the footer.
+- **App check:** compares the build commit with `HEAD` of the local repository the app was built from. It's offline and local only: nothing is fetched, so the footer turns red only once you've pulled newer commits. You can set a different repository as `sourceRepo` in `%APPDATA%\Stowdeck\settings.json`. Only commits that touch `src/Stowdeck` count, so README, test or installer changes don't. A repository under your user profile is embedded in the exe as `%USERPROFILE%\…`, so a copy you pass on doesn't carry your user name. It runs only `git rev-list` and `git rev-parse`, with optional locks off, hidden, with short timeouts, and logged. It never pulls, builds or installs.
 - **Runtime check:**
   - The installed runtimes are read from the dotnet install folders and the registered install location. No `dotnet.exe` is run.
-  - The latest-patch and support information comes from Microsoft's official release metadata (`releases-index.json`, then the channel's `releases.json`). It uses HTTPS and Microsoft's hosts only, with a short timeout, and is cached for 24 hours in `%APPDATA%\SessionKeeper\cache`.
+  - The latest-patch and support information comes from Microsoft's official release metadata (`releases-index.json`, then the channel's `releases.json`). It uses HTTPS and Microsoft's hosts only, with a short timeout, and is cached for 24 hours in `%APPDATA%\Stowdeck\cache`.
   - The tooltip warns when support ends within 30 days. Nothing is ever installed or updated.
 
 ### Settings file
 
-`%APPDATA%\SessionKeeper\settings.json` stores **Open sessions in** and the optional `sourceRepo`. Your session names are in `%APPDATA%\SessionKeeper\nicknames.json`. Start with Windows is a per-user entry under `HKCU\…\CurrentVersion\Run`, and the Start menu shortcut is `SessionKeeper.lnk` in your own Start menu folder. Neither is stored in the settings file.
+`%APPDATA%\Stowdeck\settings.json` stores **Open sessions in** and the optional `sourceRepo`. Your session names are in `%APPDATA%\Stowdeck\nicknames.json`. Start with Windows is a per-user entry under `HKCU\…\CurrentVersion\Run`, and the Start menu shortcut is `Stowdeck.lnk` in your own Start menu folder. Neither is stored in the settings file.
 
 ### How it works
 
@@ -512,25 +514,25 @@ To remove it: delete the entry from `claude_desktop_config.json`, or run `claude
 | Session details | `%USERPROFILE%\.claude\projects\<encoded-folder>\<sessionId>.jsonl`. The app reads the `cwd`, `timestamp`, user messages, and the `ai-title`, `custom-title` and `last-prompt` records. Files are append-only, so each one is parsed incrementally and cached. For a transcript over 8 MB, the first look reads only the first 256 KB and the last 1 MB. |
 | Folder checks | Done off the UI thread and cached, so an offline network drive can't freeze the window. |
 | Opening sessions | **PowerShell window:** `conhost.exe powershell -NoExit -EncodedCommand …`. Starting through conhost keeps it a real PowerShell window even when Windows' default terminal is Windows Terminal. **Windows Terminal tab:** `wt -w <name> new-tab -d <folder> powershell -NoExit -EncodedCommand …`. Both run `claude --resume <id>` in the session's folder. |
-| Snapshots | Readable JSON in `%APPDATA%\SessionKeeper\snapshots\`, with an optional note for the whole snapshot and per-session notes. |
+| Snapshots | Readable JSON in `%APPDATA%\Stowdeck\snapshots\`, with an optional note for the whole snapshot and per-session notes. |
 | Terminal sessions | One process-list snapshot (PID, parent, exe name), one pass over the desktop's console windows (class and owner only), then query-only handles on each terminal's own processes for the command line, start time and folder. Parent links are checked against start times, so a reused process ID can't attach a program to the wrong terminal. A scan takes a few milliseconds. |
 | Tools menu | Which items apply comes from small local reads: `package.json` and the repository's `.git\config` (no git process). **Open folder**, **GitHub** and a running server's address go through `explorer.exe`, and **VS Code** starts `Code.exe`, each by full path with the folder or address as the only argument. **Remotion Studio** and **Dev server** use the same window or tab as Claude sessions: the script enters the project folder (or stops), then runs `npm.cmd run dev` or `npx.cmd remotion studio` by full path. "Already running" comes from the process list, command lines, start times, working folders and Windows' TCP listener table (`GetExtendedTcpTable`); nothing connects to the server. |
-| MCP connector | `SessionKeeper.exe --mcp` reads JSON-RPC messages, one per line, from its standard input and writes the replies to its standard output. The list tools reuse the command line's own output with `--no-messages`. `open_session` and `open_app` use the same launch code as **Open**. Its standard input and output handles aren't passed on to the windows it opens. |
+| MCP connector | `Stowdeck.exe --mcp` reads JSON-RPC messages, one per line, from its standard input and writes the replies to its standard output. The list tools reuse the command line's own output with `--no-messages`. `open_session` and `open_app` use the same launch code as **Open**. Its standard input and output handles aren't passed on to the windows it opens. |
 | Uncommitted changes badge | A hidden, read-only `git status --porcelain=v2 --branch -z` per repository, off the UI thread, at most two at a time, cached for a minute. |
-| Reopening terminals | The same window or tab as Claude sessions. The script enters the folder, then starts the saved program through .NET's process API with the saved arguments as one string, so neither PowerShell nor SessionKeeper parses them. |
+| Reopening terminals | The same window or tab as Claude sessions. The script enters the folder, then starts the saved program through .NET's process API with the saved arguments as one string, so neither PowerShell nor Stowdeck parses them. |
 
 `CLAUDE_CONFIG_DIR` is respected if set.
 
 ### Safety
 
 - **Launches only on request.**
-  - Every process SessionKeeper starts goes through one gatekeeper (`LaunchGuard`), which refuses anything outside an explicit click on **Open**, **Reopen selected**, **Restore**, **New session** (its **Start** button), an item in a row's **Tools** menu (or **Yes** to open a running server's address), **Open folder**, or an MCP `open_app` or `open_session` call that Claude Desktop or Claude Code asked you to approve.
-  - The gatekeeper stops SessionKeeper's own code from launching things by accident (for example from a timer). It isn't a security boundary: it doesn't protect against other software running as you.
+  - Every process Stowdeck starts goes through one gatekeeper (`LaunchGuard`), which refuses anything outside an explicit click on **Open**, **Reopen selected**, **Restore**, **New session** (its **Start** button), an item in a row's **Tools** menu (or **Yes** to open a running server's address), **Open folder**, or an MCP `open_app` or `open_session` call that Claude Desktop or Claude Code asked you to approve.
+  - The gatekeeper stops Stowdeck's own code from launching things by accident (for example from a timer). It isn't a security boundary: it doesn't protect against other software running as you.
   - Background work has no such permission, so it can never launch anything. That covers auto-refresh, session detection, the tray and the command line.
   - Shell execution (URIs such as `ms-settings:`, documents, verbs) is refused, and so is `wt.exe` without a `new-tab` command. A test fails if any other code calls `Process.Start`.
   - The only background processes are read-only `git` queries, run under the same rules: the version check described above, and `git status` for the [uncommitted changes badge](#uncommitted-changes-badge). Both run hidden, with optional locks and `core.fsmonitor` off and a timeout. Only `rev-list`, `rev-parse` and `status` with fixed arguments are allowed, and `status` doesn't run at all in a repository whose own config names a filter command, include files or locations elsewhere (see [the badge](#uncommitted-changes-badge)). The badge's repeated checks are logged only when they fail or time out, so the log stays readable.
   - The browser is only ever opened on a running server's `http://localhost:<port>/` address or a `https://github.com/owner/repo` page. Any other address is refused.
-- **Launch log.** Every launch, every refused attempt, each user action, and app start and exit are logged with a timestamp and the calling source line. The logs are in `%APPDATA%\SessionKeeper\logs\launches-yyyy-MM-dd.log` and kept for 14 days. If a window ever opens that you didn't ask for, check the log for that time: no `LAUNCH` line means SessionKeeper didn't open it.
+- **Launch log.** Every launch, every refused attempt, each user action, and app start and exit are logged with a timestamp and the calling source line. The logs are in `%APPDATA%\Stowdeck\logs\launches-yyyy-MM-dd.log` and kept for 14 days. If a window ever opens that you didn't ask for, check the log for that time: no `LAUNCH` line means Stowdeck didn't open it.
   - **What's in it:** the program started and the first 300 characters of its arguments (which can include a full folder path and, for Windows Terminal, the tab title, so your session name), a purpose line with the folder names of the sessions opened, and, for the version check, the repository folder and git arguments. The session scripts themselves are base64, cut off at 300 characters. Snapshot notes are never logged.
   - `COMMAND` lines for reopened terminals: the label, folder and the full command that ran (at most 4,000 characters), with likely passwords, tokens and keys replaced by `***`. The snapshot file itself stores the command unredacted, so it can be re-run, which is why the Save dialog marks commands that look like they contain one.
   - Every log line is one line: line breaks, control characters and invisible characters in a label, folder or command are written as `\uXXXX`, so nothing can forge or hide a log entry.
@@ -553,7 +555,7 @@ To remove it: delete the entry from `claude_desktop_config.json`, or run `claude
   - `NoDefaultCurrentDirectoryInExePath` is set in each window, so npm's `claude.cmd` shim can't pick up a `node.exe` from the project folder.
   - A conversation is only resumed in the folder it belongs to.
   - Remotion Studio and Dev server run only `npm.cmd run dev` or `npx.cmd remotion studio`, with the tool taken by full path from outside the project. The folder is checked again just before launching. Folders that `cmd.exe` would misread (`& | < > ^ %` in the path, or a network path) and projects whose `.npmrc` redirects npm are refused. A test runs the generated script against a folder named with spaces, straight and curly quotes, `;`, brackets, `$(...)` and a backtick and checks the tool ran in exactly that folder, and that nothing runs if the folder can't be entered.
-- If SessionKeeper itself was started from inside a Claude Code session, it inherited nine session-scoped variables that would stop the new `claude` from starting normally. They're removed before launching, unless you've set them permanently (user or machine environment): `CLAUDECODE`, `CLAUDE_PID`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_SESSION_ATTENDED`, `CLAUDE_CODE_MESSAGING_SOCKET`, `CLAUDE_CODE_MESSAGING_TOKEN` and `CLAUDE_CODE_SSE_PORT`. Every other `CLAUDE*` variable (such as `CLAUDE_CONFIG_DIR` or `CLAUDE_CODE_USE_BEDROCK`) is passed through, and the names of non-permanent ones are written to the launch log.
+- If Stowdeck itself was started from inside a Claude Code session, it inherited nine session-scoped variables that would stop the new `claude` from starting normally. They're removed before launching, unless you've set them permanently (user or machine environment): `CLAUDECODE`, `CLAUDE_PID`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_SESSION_ATTENDED`, `CLAUDE_CODE_MESSAGING_SOCKET`, `CLAUDE_CODE_MESSAGING_TOKEN` and `CLAUDE_CODE_SSE_PORT`. Every other `CLAUDE*` variable (such as `CLAUDE_CONFIG_DIR` or `CLAUDE_CODE_USE_BEDROCK`) is passed through, and the names of non-permanent ones are written to the launch log.
 
 ### Limits
 
@@ -570,8 +572,20 @@ A few other open-source projects help with Claude Code sessions on Windows, and 
 
 - [Irfan-Gowani/claude-session-manager](https://github.com/Irfan-Gowani/claude-session-manager) is a desktop app focused on watching your running sessions live: one tile per project with its activity and context-window use, and buttons to focus, launch, resume or stop sessions.
 - [nukIeer/claude-session-manager](https://github.com/nukIeer/claude-session-manager) is a set of PowerShell scripts that save your open sessions in the background (hourly by default) and reopen them after a reboot, each in its own terminal.
-- SessionKeeper focuses on snapshots of your whole setup: you save a named set of sessions with notes, including other terminal windows, and restore it in one click. It also comes with a Claude Code plugin, so Claude can list your sessions and save a snapshot itself.
+- Stowdeck focuses on snapshots of your whole setup: you save a named set of sessions with notes, including other terminal windows, and restore it in one click. It also comes with a Claude Code plugin, so Claude can list your sessions and save a snapshot itself.
+
+## The name
+
+Stowdeck used to be called SessionKeeper. It was renamed because an unrelated company holds a trademark for that name. Nothing else about the app changed.
+
+If you used it under its old name, here's what happens when you update:
+
+- **Settings and snapshots move over by themselves.** The first time Stowdeck runs (the window, the command line, the plugin or the MCP connector), it copies `%APPDATA%\SessionKeeper` to `%APPDATA%\Stowdeck`. That covers your settings, session names, snapshots, logs and cache. It then renames the original to `%APPDATA%\SessionKeeper.backup` as a backup, and never deletes it. If something still has the old folder open (such as SessionKeeper itself, still running), the original stays where it is instead. Either way, `moved-from-SessionKeeper.txt` in the new folder says where the backup is. Once `%APPDATA%\Stowdeck` exists, nothing is moved again.
+- **Start with Windows and the Start menu shortcut move over too.** When the Stowdeck window first opens, and when `install.cmd` runs, the old `SessionKeeper` startup entry is replaced with a `Stowdeck` one, but only if it was on. The old `SessionKeeper.lnk` shortcut is replaced with `Stowdeck.lnk`.
+- **`install.cmd` tidies up the rest.** It offers to close a running SessionKeeper. It removes the old skill copy in `%USERPROFILE%\.claude\skills\session-keeper`, unless you use `-NoSkill`. It leaves the old app folder, `%LOCALAPPDATA%\Programs\SessionKeeper`, for you to delete.
+- **The plugin has a new name.** If you installed the old one, run `/plugin uninstall session-keeper@session-keeper` and `/plugin marketplace remove session-keeper`, then install `stowdeck` as in [Claude Code plugin](#claude-code-plugin). Its commands are now `/stowdeck:…`.
+- **The MCP connector** is now `Stowdeck.exe --mcp`. Update the path in your Claude Desktop config, or re-run the `claude mcp add` command in [MCP connector](#mcp-connector-claude-desktop-and-claude-code).
 
 ## Licence
 
-[MIT](LICENSE). SessionKeeper is an unofficial community project from Ablation Lab. It isn't made, endorsed or supported by Anthropic.
+[MIT](LICENSE). Stowdeck is an unofficial community project from Ablation Lab. It isn't made, endorsed or supported by Anthropic.
