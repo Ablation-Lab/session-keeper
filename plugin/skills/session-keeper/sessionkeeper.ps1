@@ -8,9 +8,8 @@
   --snapshots, --snapshot "note", --help ...); its output is printed and its exit code returned.
 
   SessionKeeper.exe is looked up in this order:
-    1. the SESSIONKEEPER_EXE environment variable (full path to the exe)
-    2. %LOCALAPPDATA%\Programs\SessionKeeper\SessionKeeper.exe (where install.cmd puts it)
-    3. SessionKeeper.exe on PATH
+    1. %LOCALAPPDATA%\Programs\SessionKeeper\SessionKeeper.exe (where install.cmd puts it)
+    2. SessionKeeper.exe on PATH (for a copy installed somewhere else)
   Exit code 3 means it could not be found.
 #>
 param([Parameter(ValueFromRemainingArguments = $true)] [string[]] $Rest)
@@ -19,8 +18,8 @@ $ErrorActionPreference = 'Stop'
 
 function Find-SessionKeeper {
     $candidates = New-Object System.Collections.Generic.List[string]
-    if ($env:SESSIONKEEPER_EXE) { $candidates.Add($env:SESSIONKEEPER_EXE) }
-    if ($env:LOCALAPPDATA) { $candidates.Add((Join-Path $env:LOCALAPPDATA 'Programs\SessionKeeper\SessionKeeper.exe')) }
+    $localAppData = [Environment]::GetFolderPath('LocalApplicationData')
+    if ($localAppData) { $candidates.Add((Join-Path $localAppData 'Programs\SessionKeeper\SessionKeeper.exe')) }
     $onPath = Get-Command 'SessionKeeper.exe' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($onPath) { $candidates.Add($onPath.Source) }
     foreach ($c in $candidates) {
@@ -31,7 +30,7 @@ function Find-SessionKeeper {
 
 $exe = Find-SessionKeeper
 if (-not $exe) {
-    [Console]::Error.WriteLine('SessionKeeper.exe was not found. Install it by double-clicking install.cmd in the SessionKeeper repository (see its README), or set SESSIONKEEPER_EXE to the full path of SessionKeeper.exe.')
+    [Console]::Error.WriteLine('SessionKeeper.exe was not found. Install it by running install.cmd in the SessionKeeper repository (see its README). If you installed it in another folder, add that folder to your PATH.')
     exit 3
 }
 

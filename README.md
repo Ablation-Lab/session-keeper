@@ -41,7 +41,7 @@ You need Windows 10 or 11 and the [.NET 8 SDK](https://dotnet.microsoft.com/down
 **Options:** to use these, run `install.cmd` from a terminal in the repository folder, followed by the switch:
 - `install.cmd -NoSkill` skips the Claude Code skill.
 - `install.cmd -NoStartMenu` skips the Start menu shortcut.
-- `install.cmd -Destination D:\Tools\SessionKeeper` installs to another folder you own. If you also install the skill, set `SESSIONKEEPER_EXE` to that copy's `SessionKeeper.exe` so the skill can find it.
+- `install.cmd -Destination D:\Tools\SessionKeeper` installs to another folder you own. If you use the skill or the plugin, add that folder to your `PATH` so they can find it.
 
 **Update:** pull the latest changes (for example `git pull`), then double-click **install.cmd** again. It offers to close the running copy first. The version footer doesn't look online: it compares your installed copy with your local clone, so it turns red with **update available** after you've pulled newer app changes (commits under `src/SessionKeeper`) and haven't reinstalled yet.
 
@@ -360,11 +360,10 @@ SessionKeeper.exe --help | --version
 - "save a snapshot of my sessions with the note waiting on council results"
 
 It runs the command-line options above through `sessionkeeper.ps1`, which finds `SessionKeeper.exe` in this order:
-1. The `SESSIONKEEPER_EXE` environment variable.
-2. `%LOCALAPPDATA%\Programs\SessionKeeper\SessionKeeper.exe`.
-3. `PATH`.
+1. `%LOCALAPPDATA%\Programs\SessionKeeper\SessionKeeper.exe`, where `install.cmd` puts it.
+2. `PATH`, for a copy installed somewhere else.
 
-It always lists sessions with `--no-messages`, so Claude sees titles, names, folders and times, not what was said. It also uses `--hide-temp` unless you ask for all sessions (or for throwaway or temp-folder ones). Restoring sessions stays in the app, because that opens new windows. The skill only pre-approves the read-only commands (`open`, `--list`, `--recent`, `--snapshots`, `--help`, `--version`), so Claude Code asks you before it saves a snapshot or adds the Start menu shortcut.
+It always lists sessions with `--no-messages`, so Claude sees titles, names, folders and times, not what was said. It also uses `--hide-temp` unless you ask for all sessions (or for throwaway or temp-folder ones). Restoring sessions stays in the app, because that opens new windows. The skill pre-approves nothing, so Claude Code shows you each command and asks before it runs, unless your own permission settings already allow it.
 
 `install.cmd` installs the skill for you. To install it by hand, copy the folder:
 
@@ -421,7 +420,7 @@ The plugin includes the skill, so you don't need the copy `install.cmd` puts in 
 You can also just ask, as with the skill: "which sessions are waiting for me?" or "save my sessions with the note end of day".
 
 **What it can do**
-- The commands run only the bundled `sessionkeeper.ps1`, with fixed options. Each command pre-approves exactly its own command line, so Claude Code doesn't ask you for the read-only ones.
+- The commands run only the bundled `sessionkeeper.ps1`, with fixed options. They pre-approve nothing, so Claude Code shows you each command and asks before it runs.
 - `/session-keeper:snapshot` and `/session-keeper:open` run only when you type them. Claude can't run them on its own.
 - A snapshot note is passed as one single-quoted argument. The command tells Claude to change any apostrophes in it to ʼ (which no shell treats as a quote), straight double quotes to ”, and line breaks to spaces first, so a note can't end the quotes and add options or commands, in Bash or PowerShell.
 - Results show titles, names, folders, times, statuses and session IDs, never what was said in a conversation. The listing commands use `--no-messages`.

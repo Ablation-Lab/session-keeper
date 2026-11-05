@@ -31,8 +31,8 @@ Results show each session's title (your own custom title, or the title Claude Co
 
 ## What it runs, reads and writes
 
-- **What it runs:** every command, and the skill, runs the bundled helper script with `powershell -NoProfile -ExecutionPolicy Bypass -File <plugin>/skills/session-keeper/sessionkeeper.ps1 <options>`. The helper starts `SessionKeeper.exe`, which you install separately: `install.cmd` builds it from the source in this repository. The helper looks for it in this order: the `SESSIONKEEPER_EXE` environment variable, then `%LOCALAPPDATA%\Programs\SessionKeeper\SessionKeeper.exe`, then `PATH`.
-- **What's pre-approved:** the skill can run the read-only options (listing running and recent sessions with `--no-messages`, listing snapshots, `--help`, `--version`) and `open` without asking. Saving a snapshot asks you first. `/session-keeper:snapshot` and `/session-keeper:open` run only when you type them.
+- **What it runs:** every command, and the skill, runs the bundled helper script with `powershell -NoProfile -ExecutionPolicy Bypass -File <plugin>/skills/session-keeper/sessionkeeper.ps1 <options>`. The helper starts `SessionKeeper.exe`, which you install separately: `install.cmd` builds it from the source in this repository. The helper looks for it in `%LOCALAPPDATA%\Programs\SessionKeeper\SessionKeeper.exe`, where `install.cmd` puts it, then on `PATH`.
+- **Nothing is pre-approved:** neither the skill nor the commands pre-approve any command, so Claude Code shows you each command and asks before it runs, unless your own permission settings already allow it. `/session-keeper:snapshot` and `/session-keeper:open` also run only when you type them.
 - **What it reads:** Claude Code's session registry (`~/.claude/sessions`), the session transcripts in `~/.claude/projects` (to find titles, folders and times; under `CLAUDE_CONFIG_DIR` if you've set it), the Windows process list (to find running `claude` processes), your saved snapshots, and your SessionKeeper session names (`%APPDATA%\SessionKeeper\nicknames.json`).
 - **What it writes:**
   - **The plugin and its helper** write only a snapshot, as one JSON file in `%APPDATA%\SessionKeeper\snapshots` (or the folder in `SESSIONKEEPER_SNAPSHOTS`), when you ask for one, and a per-user Start menu shortcut if you approve `--install-shortcut`.
@@ -60,7 +60,7 @@ A full walkthrough is in "Claude Code plugin" in the main [README](https://githu
 
 ## Troubleshooting
 
-- **Exit code 3** means SessionKeeper isn't installed, or the helper can't find it. Run `install.cmd -NoSkill` from the repository, or set `SESSIONKEEPER_EXE` to the full path of `SessionKeeper.exe`. The plugin needs the app at version 1.10.1 or later.
+- **Exit code 3** means SessionKeeper isn't installed, or the helper can't find it. Run `install.cmd -NoSkill` from the repository. If you installed it in another folder, add that folder to your `PATH`. The plugin needs the app at version 1.10.1 or later.
 
 ## Support
 

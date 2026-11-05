@@ -1,8 +1,5 @@
 ---
 description: List saved SessionKeeper snapshots
-allowed-tools:
-  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/skills/session-keeper/sessionkeeper.ps1" --snapshots)
-  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/skills/session-keeper/sessionkeeper.ps1" --snapshots)
 ---
 
 List my saved SessionKeeper snapshots. Run exactly this command (read-only):

@@ -2,11 +2,6 @@
 description: Save the running Claude Code sessions as a SessionKeeper snapshot, with an optional note
 argument-hint: "[note]"
 disable-model-invocation: true
-allowed-tools:
-  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/skills/session-keeper/sessionkeeper.ps1" --snapshot)
-  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/skills/session-keeper/sessionkeeper.ps1" --snapshot *)
-  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/skills/session-keeper/sessionkeeper.ps1" --snapshot)
-  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/skills/session-keeper/sessionkeeper.ps1" --snapshot *)
 ---
 
 Save my running Claude Code sessions as a SessionKeeper snapshot. This writes one file to my snapshots folder and changes nothing else.

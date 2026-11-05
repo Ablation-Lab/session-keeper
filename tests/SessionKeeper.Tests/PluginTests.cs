@@ -70,19 +70,19 @@ public sealed class PluginTests
         var text = File.ReadAllText(Path.Combine(Plugin, "commands", file));
         const string script = "\"${CLAUDE_PLUGIN_ROOT}/skills/session-keeper/sessionkeeper.ps1\"";
         Assert.Contains(script + " " + options.TrimStart(), text);
-        // Every allowed tool is that script, nothing broader.
-        foreach (Match m in Regex.Matches(text, @"(?m)^  - (Bash|PowerShell)\((.+)\)$"))
-            Assert.StartsWith("powershell -NoProfile -ExecutionPolicy Bypass -File " + script + " ", m.Groups[2].Value);
+        // Every command it shows Claude is that script, nothing else.
+        foreach (Match m in Regex.Matches(text, @"(?m)^\s*powershell [^\r\n]*$"))
+            Assert.StartsWith("powershell -NoProfile -ExecutionPolicy Bypass -File " + script + " ", m.Value.Trim());
         Assert.DoesNotContain("!`", text); // no commands are run before Claude reads the instructions
     }
 
+    /// <summary>Nothing is pre-approved: Claude Code asks the user before every command the skill or a command runs.</summary>
     [Fact]
-    public void TheSkillPreApprovesOnlyTitlesOnlyListings()
+    public void NothingIsPreApproved()
     {
-        var skill = File.ReadAllText(Path.Combine(Plugin, "skills", "session-keeper", "SKILL.md"));
-        foreach (Match m in Regex.Matches(skill, @"(?m)^  - (?:Bash|PowerShell)\(.+sessionkeeper\.ps1"" (--list|--recent)(.*)\)$"))
-            Assert.StartsWith(" --no-messages", m.Groups[2].Value);
-        Assert.Equal(8, Regex.Matches(skill, @"(?m)^  - (?:Bash|PowerShell)\(.+sessionkeeper\.ps1"" (--list|--recent) --no-messages").Count);
+        var files = Directory.GetFiles(Path.Combine(Plugin, "commands"), "*.md").Append(Path.Combine(Plugin, "skills", "session-keeper", "SKILL.md"));
+        foreach (var f in files)
+            Assert.DoesNotContain("allowed-tools", File.ReadAllText(f));
     }
 
     [Fact]
@@ -139,8 +139,7 @@ public sealed class PluginTests
         var recent = File.ReadAllText(Path.Combine(Plugin, "commands", "recent.md"));
         Assert.Contains(script + " --recent --no-messages --hide-temp\n", recent.Replace("\r\n", "\n"));
         Assert.Contains("argument-hint: \"[days] [all]\"", recent);
-        foreach (var allowed in new[] { "--recent --no-messages --hide-temp)", "--recent --no-messages --hide-temp --days *)", "--recent --no-messages)", "--recent --no-messages --days *)" })
-            Assert.Contains(script + " " + allowed, recent);
+        Assert.Contains(script + " --recent --no-messages --days 3\n", recent.Replace("\r\n", "\n"));
         var skill = File.ReadAllText(Path.Combine(Plugin, "skills", "session-keeper", "SKILL.md"));
         Assert.Contains("`--list --no-messages --hide-temp`", skill);
         Assert.Contains("`--recent --no-messages --hide-temp`", skill);

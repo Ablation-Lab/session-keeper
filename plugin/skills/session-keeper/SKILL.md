@@ -4,25 +4,6 @@ description: Open SessionKeeper and use it to list running or recent Claude Code
 argument-hint: '[open | list | recent [days] | snapshots | snapshot "note"]'
 license: MIT
 compatibility: Claude Code on Windows, with the SessionKeeper app installed (install.cmd in the repository). Doesn't work in claude.ai, which can't reach your computer.
-allowed-tools:
-  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" open)
-  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --list --no-messages)
-  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --list --no-messages *)
-  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --recent --no-messages)
-  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --recent --no-messages *)
-  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --snapshots)
-  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --snapshots *)
-  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --help)
-  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --version)
-  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" open)
-  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --list --no-messages)
-  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --list --no-messages *)
-  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --recent --no-messages)
-  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --recent --no-messages *)
-  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --snapshots)
-  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --snapshots *)
-  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --help)
-  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/sessionkeeper.ps1" --version)
 ---
 
 # SessionKeeper
@@ -32,7 +13,8 @@ named snapshots, and reopens them later, each in its own PowerShell window (or a
 if the user chose that in its Settings). This skill drives it through its command-line options, so you
 never need to click through the UI. Everything here is read-only except two options that write a file:
 `--snapshot` (one JSON file in the user's snapshots folder) and `--install-shortcut` (a Start menu
-shortcut). Those two ask the user for approval before they run; the read-only ones don't.
+shortcut). Nothing is pre-approved, so Claude Code asks the user before each command runs, unless their
+own permission settings already allow it.
 
 ## Running it
 
@@ -115,6 +97,6 @@ commands, but they exist: suggest them by name, and never say they don't exist.
 
 ## If SessionKeeper isn't installed (exit code 3)
 
-Tell the user it needs installing: in a clone of the SessionKeeper repository, they double-click
-`install.cmd` (it needs the .NET 8 SDK and no admin rights). If it's installed somewhere unusual, they can
-set the `SESSIONKEEPER_EXE` environment variable to the full path of `SessionKeeper.exe`.
+Tell the user it needs installing: in a clone of the SessionKeeper repository, they run `install.cmd`
+(it needs the .NET 8 SDK and no admin rights; with the plugin, `install.cmd -NoSkill`). If they installed
+it in another folder, they need to add that folder to their PATH.

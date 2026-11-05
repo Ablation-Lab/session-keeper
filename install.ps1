@@ -181,8 +181,8 @@ if ($LASTEXITCODE -ne 0) { throw "Installed exe failed to run (exit $LASTEXITCOD
 Write-Host ''
 Write-Host "Installed $version"
 Write-Host "  at $exe"
-if ($Destination -ine $defaultDestination -and -not $NoSkill) {
-    Write-Host "Note: the skill looks in $defaultDestination by default. Set SESSIONKEEPER_EXE=$exe so it can find this copy."
+if ($Destination -ine $defaultDestination) {
+    Write-Host "Note: the Claude Code skill and plugin look in $defaultDestination, then on PATH. Add $Destination to your PATH so they can find this copy."
 }
 
 # ---------------------------------------------------------------- Start with Windows pointing elsewhere

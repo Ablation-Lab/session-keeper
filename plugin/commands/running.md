@@ -1,11 +1,6 @@
 ---
 description: List the Claude Code sessions running right now (SessionKeeper)
 argument-hint: "[all]"
-allowed-tools:
-  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/skills/session-keeper/sessionkeeper.ps1" --list --no-messages --hide-temp)
-  - Bash(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/skills/session-keeper/sessionkeeper.ps1" --list --no-messages)
-  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/skills/session-keeper/sessionkeeper.ps1" --list --no-messages --hide-temp)
-  - PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/skills/session-keeper/sessionkeeper.ps1" --list --no-messages)
 ---
 
 List my running Claude Code sessions with SessionKeeper (read-only).
