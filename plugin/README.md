@@ -1,6 +1,6 @@
 # SessionKeeper plugin for Claude Code
 
-Lets Claude Code use [SessionKeeper](https://github.com/Ablation-Lab/session-keeper), a small Windows app that shows, saves and reopens your Claude Code sessions. SessionKeeper itself must be installed first (`install.cmd -NoSkill` in the repository).
+[SessionKeeper](https://github.com/Ablation-Lab/session-keeper) is a small Windows app that saves your whole set of Claude Code sessions as a snapshot and restores it in one click, each session resuming its conversation. It shows your recent sessions and the ones running now, and has a Terminals tab for your other terminal windows, so they can go in a snapshot too. This plugin gives Claude a skill and commands to use it itself: list your running and recent sessions, list snapshots, save a snapshot and open the app. Restoring is done in the app. Install the app first (`install.cmd -NoSkill` in the repository).
 
 > **Unofficial.** SessionKeeper is an unofficial community project from Ablation Lab. It isn't made, endorsed or supported by Anthropic.
 

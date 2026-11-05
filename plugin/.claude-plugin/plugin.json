@@ -2,7 +2,7 @@
   "name": "session-keeper",
   "displayName": "SessionKeeper",
   "version": "1.10.1",
-  "description": "See, save and reopen your Claude Code sessions on Windows with SessionKeeper: list running and recent sessions, list snapshots, save a snapshot with a note, and open the app.",
+  "description": "SessionKeeper is a Windows app that saves your whole set of Claude Code sessions as a snapshot and restores it in one click, shows your recent and running sessions, and has a tab for your other terminal windows. This plugin gives Claude a skill and commands to list your sessions and snapshots, save a snapshot and open the app.",
   "author": { "name": "Ablation Lab" },
   "homepage": "https://github.com/Ablation-Lab/session-keeper",
   "repository": "https://github.com/Ablation-Lab/session-keeper",

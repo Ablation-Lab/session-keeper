@@ -1,4 +1,4 @@
-A small Windows app (C# / .NET 8 WPF) that shows which Claude Code sessions are running, saves them as named snapshots, and reopens them later, each in its own PowerShell window or Windows Terminal tab, resuming the same conversation. It can also save and reopen your other terminal sessions, such as other CLI agents, dev servers and plain shells.
+A small Windows app (C# / .NET 8 WPF) that saves your whole set of Claude Code sessions as a snapshot and restores it in one click, each in its own PowerShell window or Windows Terminal tab, resuming the same conversation. It shows your recent sessions and the ones running now, and has a Terminals tab for your other terminal windows (other CLI agents, dev servers, plain shells), so they can go in a snapshot too. It comes with a Claude Code plugin: a skill and commands Claude can use itself to list your sessions, save a snapshot and open the app.
 
 ## What it does
 
@@ -557,6 +557,14 @@ To remove it: delete the entry from `claude_desktop_config.json`, or run `claude
 - Tools: a Studio or dev server running as administrator, or a Studio whose working folder can't be read and whose Remotion isn't in the project's `node_modules`, isn't recognised as running. A dev server started without `npm run dev` (for example `npx vite`, `pnpm dev` or `yarn dev`) isn't either. **GitHub** recognises `github.com` remotes only, not GitHub Enterprise or other hosts.
 - The uncommitted changes badge needs Git for Windows (`git.exe` on `PATH` or in its usual install folder). Without it, no badge is shown.
 - `claude.exe` is found in `%USERPROFILE%\.local\bin`, then on `PATH`, then as npm's `claude.cmd`. If none of these exist, the windows run `claude` and rely on `PATH`.
+
+## How it compares
+
+A few other open-source projects help with Claude Code sessions on Windows, and each focuses on something different, so pick the one that fits how you work:
+
+- [Irfan-Gowani/claude-session-manager](https://github.com/Irfan-Gowani/claude-session-manager) is a desktop app focused on watching your running sessions live: one tile per project with its activity and context-window use, and buttons to focus, launch, resume or stop sessions.
+- [nukIeer/claude-session-manager](https://github.com/nukIeer/claude-session-manager) is a set of PowerShell scripts that save your open sessions in the background (hourly by default) and reopen them after a reboot, each in its own terminal.
+- SessionKeeper focuses on snapshots of your whole setup: you save a named set of sessions with notes, including other terminal windows, and restore it in one click. It also comes with a Claude Code plugin, so Claude can list your sessions and save a snapshot itself.
 
 ## Licence
 

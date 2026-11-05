@@ -1,12 +1,12 @@
 {
   "name": "session-keeper",
   "owner": { "name": "Ablation Lab" },
-  "description": "The SessionKeeper plugin for Claude Code (Windows).",
+  "description": "SessionKeeper from Ablation Lab: save your whole set of Claude Code sessions as a snapshot and restore it in one click (Windows).",
   "plugins": [
     {
       "name": "session-keeper",
       "source": "./plugin",
-      "description": "List running and recent Claude Code sessions, list snapshots, save a snapshot with a note, and open SessionKeeper.",
+      "description": "Save your whole set of Claude Code sessions as a snapshot and restore it in one click with the SessionKeeper app, which also shows recent and running sessions and your other terminal windows. Claude gets a skill and commands to list sessions and snapshots, save a snapshot and open the app.",
       "version": "1.10.1"
     }
   ]
