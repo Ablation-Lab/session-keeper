@@ -23,11 +23,15 @@
 #      not ignored or tracked, no files to check, or the self-test failed): the commit is blocked
 set -u
 
+# Carriage return and newline, for stripping Windows line endings and joining output lines.
+printf -v cr '\r'
+printf -v nl '\n'
+
 fail() { echo "privacy-check: BROKEN: $*" >&2; exit 2; }
 
 line_hash() {  # $1 = path, $2 = line text (a trailing CR is ignored)
   local h
-  h=$(printf '%s:%s' "$1" "${2%$'\r'}" | sha256sum) || fail "sha256sum failed"
+  h=$(printf '%s:%s' "$1" "${2%"$cr"}" | sha256sum) || fail "sha256sum failed"
   printf '%s' "${h%% *}"
 }
 
@@ -40,6 +44,7 @@ case "${1:-}" in
   --worktree) mode=worktree ;;
   --hash)
     [ $# -eq 3 ] || fail "usage: --hash <path> <line number>"
+    [[ "$3" =~ ^[1-9][0-9]*$ ]] || fail "line number must be a positive whole number, not '$3'"
     text=$(git show ":$2" 2>/dev/null | sed -n "${3}p") || fail "cannot read staged $2"
     [ -n "$text" ] || fail "no staged line $3 in $2"
     echo "$(line_hash "$2" "$text")  $2"
@@ -74,7 +79,7 @@ if [ -z "${PRIVACY_PATTERNS:-}" ]; then
 fi
 private=()
 while IFS= read -r line || [ -n "$line" ]; do
-  line="${line%$'\r'}"
+  line="${line%"$cr"}"
   case "$line" in ''|'#'*) continue ;; esac
   private+=("$line")
 done < "$private_file"
@@ -108,7 +113,7 @@ declare -A allowed=()
 if [ -e "$allow_file" ]; then
   n=0
   while IFS= read -r line || [ -n "$line" ]; do
-    n=$((n + 1)); line="${line%$'\r'}"
+    n=$((n + 1)); line="${line%"$cr"}"
     case "$line" in ''|'#'*) continue ;; esac
     h="${line%%[[:space:]]*}"
     [[ "$h" =~ ^[0-9a-f]{64}$ ]] || fail "$allow_file line $n is not a SHA-256 hash: $line"
@@ -133,7 +138,7 @@ run_pattern() {  # $1 = label, $2 = pattern
     if [ -n "${allowed[$(line_hash "$path" "$text")]:-}" ]; then
       allowed_hits=$((allowed_hits + 1))
     else
-      kept+="    $path:$lineno:$text"$'\n'
+      kept+="    $path:$lineno:$text$nl"
     fi
   done <<< "$out"
   if [ -n "$kept" ]; then
