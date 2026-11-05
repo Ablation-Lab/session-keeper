@@ -409,7 +409,7 @@ The listing commands leave out untitled sessions in temp folders (short throwawa
 
 From a terminal, `claude plugin marketplace add <path or Ablation-Lab/session-keeper>` and `claude plugin install session-keeper@session-keeper` do the same. To update it later, run `/plugin marketplace update session-keeper` (after pulling, if you added your local clone), then choose **Update now** for the plugin on the **Installed** tab of `/plugin`, or run `claude plugin update session-keeper@session-keeper` from a terminal. Auto-update is off by default for marketplaces other than Anthropic's; you can turn it on under `/plugin` > **Marketplaces**.
 
-The plugin includes the skill, so you don't need the copy `install.cmd` puts in `%USERPROFILE%\.claude\skills` as well. If you use the plugin, install the app with `install.cmd -NoSkill`, or delete that folder, so Claude Code doesn't see the skill twice.
+The plugin includes the skill, so you don't need the copy `install.cmd` puts in `%USERPROFILE%\.claude\skills` as well. If you use the plugin, install the app with `install.cmd -NoSkill`, or delete that folder, so Claude Code doesn't see the skill twice. What the plugin runs, reads and writes, and its privacy notes, are in the [plugin's README](plugin/README.md#privacy).
 
 **Use the plugin**
 1. In any Claude Code session, type `/session-keeper:running`. Claude runs SessionKeeper and replies with one line per running session: folder, name or title, status, and when it was last active.

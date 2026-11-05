@@ -1,10 +1,14 @@
 {
   "name": "session-keeper",
+  "displayName": "SessionKeeper",
   "version": "1.10.1",
   "description": "See, save and reopen your Claude Code sessions on Windows with SessionKeeper: list running and recent sessions, list snapshots, save a snapshot with a note, and open the app.",
   "author": { "name": "Ablation Lab" },
   "homepage": "https://github.com/Ablation-Lab/session-keeper",
   "repository": "https://github.com/Ablation-Lab/session-keeper",
   "license": "MIT",
+  "icon": "./.claude-plugin/icon.png",
+  "supportUrl": "https://github.com/Ablation-Lab/session-keeper/issues",
+  "privacyPolicyUrl": "https://github.com/Ablation-Lab/session-keeper/blob/main/plugin/README.md#privacy",
   "keywords": ["sessions", "snapshots", "windows", "productivity"]
 }
