@@ -399,7 +399,7 @@ The `plugin` folder is a Claude Code plugin. It bundles the [skill](#claude-code
 The listing commands leave out untitled sessions in temp folders (short throwaway runs) and say how many they hid. Add `all` to include them, for example `/stowdeck:recent 3 all`.
 
 **Install the plugin**
-1. Install Stowdeck 1.10.1 or later with `install.cmd` (see [Install / Update](#install--update)). The plugin uses the app's `--no-messages` and `--hide-temp` options, which earlier versions don't have.
+1. Install Stowdeck 2.0.0 or later with `install.cmd` (see [Install / Update](#install--update)). Earlier versions, under the app's old name, aren't found by the plugin (see [The name](#the-name)).
 2. In Claude Code, add the marketplace. From your clone:
    ```text
    /plugin marketplace add C:\path\to\stowdeck
@@ -451,7 +451,7 @@ You can also just ask, as with the skill: "which sessions are waiting for me?" o
 Results are plain text with titles, names, folders, times, statuses and session IDs, never what was said in a conversation. The two list tools leave out untitled sessions in temp folders (short throwaway runs) and say how many they hid, unless `include_temp` is true.
 
 **Install it in Claude Desktop**
-1. Install Stowdeck 1.10.1 or later with `install.cmd`.
+1. Install Stowdeck 2.0.0 or later with `install.cmd`.
 2. In Claude Desktop, open **Settings** > **Developer** > **Edit Config**. This opens `%APPDATA%\Claude\claude_desktop_config.json` (create it if it doesn't exist).
 3. Add Stowdeck under `mcpServers`, with your user name in the path. If the file already has other servers, add this entry next to them:
    ```json
@@ -467,7 +467,7 @@ Results are plain text with titles, names, folders, times, statuses and session 
 4. Save the file and restart Claude Desktop. **stowdeck** then appears in the connectors (tools) menu of a new chat.
 
 **Install it in Claude Code**
-1. Install Stowdeck 1.10.1 or later with `install.cmd`.
+1. Install Stowdeck 2.0.0 or later with `install.cmd`.
 2. In PowerShell, add it for all your projects:
    ```powershell
    claude mcp add --scope user stowdeck -- "$env:LOCALAPPDATA\Programs\Stowdeck\Stowdeck.exe" --mcp
@@ -576,7 +576,7 @@ A few other open-source projects help with Claude Code sessions on Windows, and 
 
 ## The name
 
-Stowdeck used to be called SessionKeeper. It was renamed because an unrelated company holds a trademark for that name. Nothing else about the app changed.
+Stowdeck used to be called SessionKeeper. It was renamed because an unrelated company holds a trademark for that name. Version 2.0.0 is the first under the new name, and nothing else about the app changed.
 
 If you used it under its old name, here's what happens when you update:
 

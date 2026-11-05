@@ -1,7 +1,7 @@
 {
   "name": "stowdeck",
   "displayName": "Stowdeck",
-  "version": "1.10.1",
+  "version": "2.0.0",
   "description": "Stowdeck is a Windows app that saves your whole set of Claude Code sessions as a snapshot and restores it in one click, shows your recent and running sessions, and has a tab for your other terminal windows. This plugin gives Claude a skill and commands to list your sessions and snapshots, save a snapshot and open the app.",
   "author": { "name": "Ablation Lab" },
   "homepage": "https://github.com/Ablation-Lab/stowdeck",

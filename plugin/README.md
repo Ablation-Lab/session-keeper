@@ -47,7 +47,7 @@ Stowdeck has no server, account or telemetry, and collects nothing. Everything a
 
 ## Install
 
-1. Install the Stowdeck app (1.10.1 or later): download `Stowdeck.exe` from the [latest release](https://github.com/Ablation-Lab/stowdeck/releases/latest), put it in `%LOCALAPPDATA%\Programs\Stowdeck` (create the folder) and run it once. That's where the plugin looks for it. It's a self-contained Windows x64 exe, so you don't need .NET installed. It isn't code-signed, so Windows SmartScreen may warn the first time: choose **More info**, then **Run anyway**.
+1. Install the Stowdeck app (2.0.0 or later): download `Stowdeck.exe` from the [latest release](https://github.com/Ablation-Lab/stowdeck/releases/latest), put it in `%LOCALAPPDATA%\Programs\Stowdeck` (create the folder) and run it once. That's where the plugin looks for it. It's a self-contained Windows x64 exe, so you don't need .NET installed. It isn't code-signed, so Windows SmartScreen may warn the first time: choose **More info**, then **Run anyway**.
 
    Or build it from source: run `install.cmd -NoSkill` in a clone of the [repository](https://github.com/Ablation-Lab/stowdeck). It needs the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). `-NoSkill` skips the separate copy of the skill, which the plugin already includes, so Claude Code doesn't load it twice.
 2. In Claude Code (2.1.275 or later), add the marketplace and install the plugin in one step:
@@ -63,11 +63,11 @@ A full walkthrough is in "Claude Code plugin" in the main [README](https://githu
 
 ## Troubleshooting
 
-- **Exit code 3** means Stowdeck isn't installed, or the helper can't find it. Download `Stowdeck.exe` from the [latest release](https://github.com/Ablation-Lab/stowdeck/releases/latest) into `%LOCALAPPDATA%\Programs\Stowdeck`, or run `install.cmd -NoSkill` from the repository. If you put it in another folder, add that folder to your `PATH`. The plugin needs the app at version 1.10.1 or later.
+- **Exit code 3** means Stowdeck isn't installed, or the helper can't find it. Download `Stowdeck.exe` from the [latest release](https://github.com/Ablation-Lab/stowdeck/releases/latest) into `%LOCALAPPDATA%\Programs\Stowdeck`, or run `install.cmd -NoSkill` from the repository. If you put it in another folder, add that folder to your `PATH`. The plugin needs the app at version 2.0.0 or later.
 
 ## For reviewers
 
-Download: [Stowdeck.exe, v1.10.1](https://github.com/Ablation-Lab/stowdeck/releases/download/v1.10.1/Stowdeck.exe) (Windows 10 or 11, x64, self-contained, so no .NET install is needed; the SHA-256 is on the [release page](https://github.com/Ablation-Lab/stowdeck/releases/tag/v1.10.1)).
+Download: [Stowdeck.exe, v2.0.0](https://github.com/Ablation-Lab/stowdeck/releases/download/v2.0.0/Stowdeck.exe) (Windows 10 or 11, x64, self-contained, so no .NET install is needed; the SHA-256 is on the [release page](https://github.com/Ablation-Lab/stowdeck/releases/tag/v2.0.0)).
 
 To see it working:
 

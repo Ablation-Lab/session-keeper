@@ -14,7 +14,7 @@
     <StartupObject>Stowdeck.Program</StartupObject>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <!-- The one place the version is set. Bump on each change: patch = fixes, minor = features, major = breaking. -->
-    <Version>1.10.1</Version>
+    <Version>2.0.0</Version>
     <Product>Stowdeck</Product>
     <Description>See, save and reopen Claude Code sessions.</Description>
     <!-- Reading another process's working directory relies on 64-bit PEB offsets. -->
